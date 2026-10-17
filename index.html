@@ -131,6 +131,31 @@ footer .right{text-align:right;font-family:var(--mono);font-size:.78rem;color:va
 .bar{height:6px;background:var(--soft);border-radius:4px;margin-top:6px;width:120px;overflow:hidden;margin-left:auto}
 .bar i{display:block;height:100%;background:var(--accent);border-radius:4px}
 .storeedit{display:grid;grid-template-columns:1fr auto;gap:6px;margin-top:6px}
+.qrow{display:grid;grid-template-columns:1fr auto;gap:6px}
+.scanbtn{background:var(--soft);color:var(--accent);border-radius:10px;font-weight:700;padding:0 14px;display:inline-flex;align-items:center;gap:6px}
+.scanbtn svg{width:18px;height:18px;fill:currentColor}
+.scanwide{width:100%;justify-content:center;padding:12px;margin-top:10px}
+.homescan{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;align-items:center;gap:12px;text-align:left;width:100%}
+.homescan svg{width:28px;height:28px;fill:var(--accent);flex:none}
+.homescan small{display:block;color:var(--muted);font-size:.78rem;margin-top:2px}
+.codes{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
+.code{font-family:var(--mono);font-size:.72rem;background:var(--soft);border-radius:6px;padding:3px 4px 3px 8px;display:inline-flex;align-items:center;gap:4px}
+.code button{background:none;color:var(--muted);padding:0 4px}
+/* scanner: always dark camera surface; the bottom sheet follows the theme */
+.scan{position:fixed;inset:0;z-index:50;background:#0b0f0c;color:#eef3ee;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+.scan-top{display:flex;justify-content:space-between;align-items:center;padding-block:12px;gap:8px}
+.scan-top b{font-size:1.05rem}
+.scan-x{background:#eef3ee;color:#0b0f0c;border-radius:999px;padding:8px 18px;font-weight:700}
+.scan-view{position:relative;flex:1;min-height:140px;overflow:hidden;background:#000}
+.scan-view video{width:100%;height:100%;object-fit:cover;display:block}
+.scan-guide{position:absolute;left:10%;right:10%;top:32%;height:28%;border:3px solid #4cc38a;border-radius:14px;box-shadow:0 0 0 2000px rgb(0 0 0 / .38);pointer-events:none}
+.scan-guide.hit{border-color:#ffffff}
+.scan-status{padding-block:10px;font-size:.92rem;min-height:1.4em;line-height:1.4}
+.scan-status b{color:#7fdcab}
+.scan-sheet{background:var(--surface);color:var(--fg);border-radius:18px 18px 0 0;padding-block:14px calc(14px + env(safe-area-inset-bottom,0px));max-height:62%;overflow-y:auto}
+.scan-sheet .num{text-align:left}
+.linkrow{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.linkrow button{background:var(--soft);border-radius:8px;padding:8px 10px;text-align:left;font-size:.85rem}
 </style>
 </head>
 <body>
@@ -264,6 +289,8 @@ function renderHome(main){
   const b = el(`<button class="start" type="button"><span>Start listing<small>Plan what to buy for this trip</small></span><span class="arrow">→</span></button>`);
   b.onclick = () => { if (state.sample) clearSample(); state.trip = {date:today(), items:[]}; ui.tab="list"; ui.store = state.stores[0]?.id||null; save(); render(); setTimeout(()=>$("q")?.focus(),50); };
   wrap.appendChild(b);
+  const hs = el(`<button type="button" class="homescan">${BARCODE_ICON}<span><b>Scan products</b><small>Save your packaged items once by their barcode</small></span></button>`);
+  hs.onclick = () => openScanner("register"); wrap.appendChild(hs);
   const last = state.history[state.history.length-1];
   const links = el(`<div class="homelinks">
     <button type="button" data-go="prices"><div class="k">Price history</div><div class="v">${(n=>n+" item"+(n===1?"":"s"))(state.products.filter(p=>purchases(p.id).length).length)}</div></button>
@@ -282,9 +309,10 @@ function renderList(main){
   sampleNote(main);
   const onTrip = new Set(tItems().map(t=>t.pid));
   const box = el(`<div class="card">
-    <input id="q" placeholder="Type an item, e.g. Tofu" aria-label="Item to buy" autocomplete="off" enterkeyhint="done">
+    <div class="qrow"><input id="q" placeholder="Type an item, e.g. Tofu" aria-label="Item to buy" autocomplete="off" enterkeyhint="done"><span data-scan></span></div>
     <div id="sgBox"></div>
   </div>`);
+  box.querySelector("[data-scan]").replaceWith(scanButton("Scan", "", "list"));
   const q = box.querySelector("#q"), sgBox = box.querySelector("#sgBox");
   q.value = ui.query;
   const paint = () => {
@@ -394,10 +422,17 @@ function productEditor(p, ti){
     <input aria-label="Item name">
     <div class="hint">Changes are saved to this item for every trip.</div>
     <div class="cs"></div>
+    <div class="codes" data-codes></div>
     <div class="form-foot"><button class="ghost danger" type="button" data-a="rm">Remove from this trip</button>
       <span style="display:flex;gap:12px;align-items:center"><button class="ghost" type="button" data-a="cancel">Cancel</button><button class="primary" type="submit">Save</button></span></div>
   </form>`);
   const n = ed.querySelector("input"); n.value = p.name;
+  const cbox = ed.querySelector("[data-codes]");
+  const paintCodes = () => { cbox.innerHTML = ""; (p.codes||[]).forEach(c => {
+      const t = el(`<span class="code"></span>`); t.textContent = "▥ " + c;
+      const x = el(`<button type="button" aria-label="Remove barcode">✕</button>`); x.onclick = () => { p.codes = p.codes.filter(y=>y!==c); touch(); paintCodes(); };
+      t.appendChild(x); cbox.appendChild(t); }); };
+  paintCodes();
   ed.querySelector(".cs").replaceWith(chipRow(sel, id => { const i=sel.indexOf(id); i>=0?sel.splice(i,1):sel.push(id); }));
   ed.onsubmit = e => { e.preventDefault(); const v = n.value.trim(); if (!v) return;
     const dup = state.products.find(x => x!==p && norm(x.name)===norm(v));
@@ -457,6 +492,7 @@ function renderShop(main){
     bar.appendChild(b);
   });
   main.appendChild(bar);
+  main.appendChild(scanButton("Scan an item to add its price", "scanwide", "shop"));
 
   const here = leftAt(sid);
   const boughtHere = tItems().filter(i => i.bought && i.bought.store===sid);
@@ -632,6 +668,165 @@ function backupControls(main){
       state = d; touch(); render(); }).catch(() => { msg.textContent = "That file isn't a Palengke List backup."; });
   };
   main.appendChild(w);
+}
+
+
+/* ===== BARCODE SCANNER =====
+   A barcode is only a product ID: it links a scanned pack to one saved item so its price history stays consistent. */
+const ZXING_SRC = "zxing.min.js";
+const BARCODE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="2" height="16"/><rect x="5.5" y="4" width="1" height="16"/><rect x="8" y="4" width="2.5" height="16"/><rect x="12" y="4" width="1" height="16"/><rect x="14.5" y="4" width="2" height="16"/><rect x="18" y="4" width="1" height="16"/><rect x="20" y="4" width="2" height="16"/></svg>';
+const byCode = code => state.products.find(p => (p.codes||[]).includes(code));
+let scan = null;
+function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement("script"); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+function scanButton(label, cls, mode){
+  const b = el(`<button type="button" class="scanbtn ${cls||""}">${BARCODE_ICON}<span></span></button>`);
+  b.querySelector("span").textContent = label; b.onclick = () => openScanner(mode); return b;
+}
+const TITLES = {register:"Scan products to save", list:"Scan to add to list", shop:"Scan an item"};
+
+async function openScanner(mode){
+  if (scan) return;
+  if (state.sample) { clearSample(); save(); }
+  const ov = el(`<div class="scan" role="dialog" aria-modal="true">
+    <div class="scan-top pad"><b></b><button type="button" class="scan-x">Done</button></div>
+    <div class="scan-view"><video playsinline muted autoplay></video><div class="scan-guide"></div></div>
+    <div class="scan-status pad" aria-live="polite">Starting camera…</div>
+    <div class="scan-sheet pad"></div></div>`);
+  ov.querySelector("b").textContent = TITLES[mode];
+  document.body.appendChild(ov);
+  scan = {mode, ov, video:ov.querySelector("video"), status:ov.querySelector(".scan-status"), sheet:ov.querySelector(".scan-sheet"),
+          guide:ov.querySelector(".scan-guide"), last:{code:null,t:0}, paused:false, saved:0, stop:()=>{}};
+  ov.querySelector(".scan-x").onclick = closeScanner;
+  idleSheet();
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw Object.assign(new Error(), {name:"NoCamera"});
+    if ("BarcodeDetector" in window) {
+      const want = ["ean_13","ean_8","upc_a","upc_e","code_128","code_39","itf"];
+      const have = await BarcodeDetector.getSupportedFormats();
+      const det = new BarcodeDetector({formats: want.filter(f => have.includes(f))});
+      const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}, audio:false});
+      if (!scan) { stream.getTracks().forEach(t=>t.stop()); return; }
+      scan.video.srcObject = stream; await scan.video.play();
+      let timer, alive = true;
+      const tick = async () => { if (!alive) return;
+        if (scan && !scan.paused && scan.video.readyState >= 2) { try { const r = await det.detect(scan.video); if (r[0]) onCode(r[0].rawValue); } catch(e){} }
+        timer = setTimeout(tick, 180); };
+      tick();
+      scan.stop = () => { alive = false; clearTimeout(timer); stream.getTracks().forEach(t=>t.stop()); };
+    } else {
+      if (!window.ZXing) await loadScript(ZXING_SRC);
+      if (!scan) return;
+      const hints = new Map(); const F = ZXing.BarcodeFormat;
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.ITF]);
+      const reader = new ZXing.BrowserMultiFormatReader(hints, 250);
+      await reader.decodeFromConstraints({video:{facingMode:"environment"}}, scan.video, res => { if (res && scan && !scan.paused) onCode(res.getText()); });
+      scan.stop = () => { try { reader.reset(); } catch(e){} };
+    }
+    if (scan && !scan.paused) scan.status.textContent = "Point the camera at a barcode.";
+  } catch (e) {
+    if (!scan) return;
+    scan.ov.querySelector(".scan-view").hidden = true;
+    scan.status.textContent = e.name === "NotAllowedError"
+      ? "Camera access is blocked. Allow the camera for this app in your phone's settings, or type the barcode number below."
+      : "The camera isn't available here. You can type the barcode number below.";
+  }
+}
+function closeScanner(){ if (!scan) return; scan.stop(); scan.ov.remove(); scan = null; render(); }
+function setStatus(html){ if (scan) scan.status.innerHTML = html; }
+
+function idleSheet(){
+  const f = el(`<form autocomplete="off"><div class="qrow"><input class="num" inputmode="numeric" placeholder="Or type the barcode number" aria-label="Barcode number"><button class="primary" type="submit">Go</button></div>
+    <div class="hint" data-count></div></form>`);
+  const n = scan.saved;
+  f.querySelector("[data-count]").textContent = scan.mode==="register"
+    ? (n ? `${n} product${n===1?"":"s"} saved so far. Keep scanning, then tap Done.` : "Scan each pack once. You'll name it and pick its stores the first time.")
+    : (scan.mode==="list" ? (n ? `${n} added to this trip.` : "Saved items are added to your list right away.") : "Scan the item you're picking up.");
+  f.onsubmit = e => { e.preventDefault(); const v = f.querySelector("input").value.replace(/\D/g,""); if (v.length >= 6) onCode(v, true); };
+  scan.sheet.innerHTML = ""; scan.sheet.appendChild(f);
+}
+
+function onCode(code, manual){
+  if (!scan || scan.paused) return;
+  const now = Date.now();
+  if (!manual && code === scan.last.code && now - scan.last.t < 2500) return;
+  scan.last = {code, t:now};
+  try { navigator.vibrate && navigator.vibrate(60); } catch(e){}
+  scan.guide.classList.add("hit"); setTimeout(()=>scan && scan.guide.classList.remove("hit"), 300);
+  const p = byCode(code);
+  if (p) return knownProduct(p);
+  newProductSheet(code);
+}
+function knownProduct(p){
+  if (scan.mode === "register") { setStatus(`Already saved: <b>${esc(p.name)}</b>`); return; }
+  if (scan.mode === "list") {
+    const had = tItems().some(t=>t.pid===p.id);
+    if (!had) { addToTrip(p); scan.saved++; touch(); render(); }
+    setStatus(had ? `Already on your list: <b>${esc(p.name)}</b>` : `Added: <b>${esc(p.name)}</b>`); idleSheet(); return;
+  }
+  openPriceFor(p);
+}
+function openPriceFor(p){
+  addToTrip(p);
+  const ti = tItems().find(t=>t.pid===p.id);
+  if (ti && !ti.bought && !canBuyAt(ti, ui.store)) ui.openOthers = true;
+  ui.editing = p.id; touch(); closeScanner();
+  setTimeout(() => { const inp = document.querySelector(".editor input"); if (inp) { inp.scrollIntoView && inp.scrollIntoView({block:"center"}); inp.focus(); } }, 60);
+}
+function afterSave(p){
+  if (scan.mode === "register") { scan.saved++; setStatus(`Saved: <b>${esc(p.name)}</b>`); scan.paused = false; touch(); idleSheet(); return; }
+  if (scan.mode === "list") { addToTrip(p); scan.saved++; setStatus(`Added: <b>${esc(p.name)}</b>`); scan.paused = false; touch(); render(); idleSheet(); return; }
+  scan.paused = false; openPriceFor(p);
+}
+
+function newProductSheet(code){
+  scan.paused = true;
+  setStatus(`New barcode <b>${esc(code)}</b>`);
+  const sel = ui.addStores.filter(id => state.stores.some(s=>s.id===id));
+  const f = el(`<form autocomplete="off">
+    <input placeholder="Name this item, e.g. Soy sauce 1L" aria-label="Item name">
+    <div class="hint" data-look>Looking up the product name…</div>
+    <div class="linkrow"></div>
+    <div class="hint">Where do you buy it? Tap your first choice, then any backups.</div>
+    <div class="cs"></div>
+    <div class="form-foot"><button class="ghost" type="button" data-a="skip">Skip</button><button class="primary" type="submit">Save item</button></div>
+  </form>`);
+  const name = f.querySelector("input"), links = f.querySelector(".linkrow"), look = f.querySelector("[data-look]");
+  f.querySelector(".cs").replaceWith(chipRow(sel, id => { const i=sel.indexOf(id); i>=0?sel.splice(i,1):sel.push(id); ui.addStores=sel.slice(); save(); }));
+  // offer to attach this barcode to an item you already typed by hand
+  const paintLinks = () => {
+    links.innerHTML = ""; const v = norm(name.value); if (!v) return;
+    state.products.filter(x => norm(x.name).includes(v)).slice(0,4).forEach(x => {
+      const b = el(`<button type="button"></button>`); b.textContent = `This is “${x.name}” (saved item)`;
+      b.onclick = () => { x.codes = x.codes || []; if (!x.codes.includes(code)) x.codes.push(code); afterSave(x); };
+      links.appendChild(b);
+    });
+  };
+  let typed = false;
+  name.oninput = () => { typed = true; paintLinks(); };
+  f.querySelector('[data-a="skip"]').onclick = () => { scan.paused = false; setStatus("Point the camera at a barcode."); idleSheet(); };
+  f.onsubmit = e => { e.preventDefault(); const v = name.value.trim(); if (!v) { name.focus(); return; }
+    let x = state.products.find(q => norm(q.name)===norm(v));
+    if (x) { x.codes = x.codes || []; if (!x.codes.includes(code)) x.codes.push(code); }
+    else { x = {id:uid(), name:v, stores:sel.slice(), codes:[code]}; state.products.push(x); }
+    afterSave(x); };
+  scan.sheet.innerHTML = ""; scan.sheet.appendChild(f);
+  lookupName(code).then(n => {
+    if (!f.isConnected) return;
+    if (n && !typed) { name.value = n; paintLinks(); look.textContent = "Name found online. Edit it if you like, and add the size if it's missing."; }
+    else look.textContent = n ? "" : "Not found online. Type a name, and include the size (like 1L) so prices compare fairly.";
+  });
+  if (!navigator.onLine) look.textContent = "Type a name, and include the size (like 1L) so prices compare fairly.";
+}
+async function lookupName(code){
+  try {
+    const ctl = new AbortController(); const t = setTimeout(()=>ctl.abort(), 3500);
+    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=product_name,brands,quantity`, {signal:ctl.signal});
+    clearTimeout(t); if (!r.ok) return null;
+    const d = await r.json(); if (d.status !== 1 || !d.product) return null;
+    const brand = (d.product.brands||"").split(",")[0].trim(), pn = (d.product.product_name||"").trim(), q = (d.product.quantity||"").trim();
+    if (!pn && !brand) return null;
+    return [brand && !pn.toLowerCase().includes(brand.toLowerCase()) ? brand : "", pn, q].filter(Boolean).join(" ");
+  } catch(e){ return null; }
 }
 
 /* ===== shell ===== */
