@@ -183,6 +183,9 @@ footer .right{text-align:right;font-family:var(--mono);font-size:.78rem;color:va
   </footer>
 </div>
 
+<script src="firebase-app-compat.js"></script>
+<script src="firebase-auth-compat.js"></script>
+<script src="firebase-firestore-compat.js"></script>
 <script>
 /* ===== helpers ===== */
 const peso = n => "₱" + (Math.round(n*100)/100).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -231,7 +234,7 @@ function migrate(){
 let ui = {tab:"list", store:null, editing:null, confirming:null, addStores:[], editStores:false, product:null, query:"", sel:null, openOthers:false};
 try { Object.assign(ui, JSON.parse(localStorage.getItem(KEY+"-ui")) || {}); } catch(e){}
 Object.assign(ui, {editing:null, confirming:null, editStores:false, query:"", sel:null});
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); localStorage.setItem(KEY+"-ui", JSON.stringify({tab:ui.tab,store:ui.store,addStores:ui.addStores,product:ui.product})); } catch(e){} };
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); localStorage.setItem(KEY+"-ui", JSON.stringify({tab:ui.tab,store:ui.store,addStores:ui.addStores,product:ui.product})); } catch(e){} if (typeof push === "function") push(); };
 const touch = () => { save(); };
 const prod = pid => state.products.find(p=>p.id===pid);
 const storeName = id => state.stores.find(s=>s.id===id)?.name || "Removed store";
@@ -298,12 +301,13 @@ function renderHome(main){
   </div>`);
   links.querySelectorAll("button").forEach(x => x.onclick = () => { ui.tab="prices"; ui.product=null; save(); render(); });
   wrap.appendChild(links);
+  const acct = accountLine(); if (acct) wrap.appendChild(acct);
   main.appendChild(wrap);
 }
 
 /* ===== LIST ===== */
 function addToTrip(p){
-  if (!tItems().some(t=>t.pid===p.id)) state.trip.items.push({pid:p.id, skip:[], bought:null});
+  if (!tItems().some(t=>t.pid===p.id)) state.trip.items.push({pid:p.id, skip:[], bought:null, added:Date.now()});
 }
 function renderList(main){
   sampleNote(main);
@@ -525,6 +529,7 @@ function renderShop(main){
       <span>Finish this trip? ${got.length} price${got.length===1?"":"s"} will be saved to your price history.${notGot?` ${notGot} item${notGot===1?"":"s"} you didn't buy will be dropped.`:""}</span>
       <button class="primary" type="button" data-a="ok">Finish and save</button><button class="ghost" type="button" data-a="cancel">Cancel</button></div></div>`);
     c.querySelector('[data-a="ok"]').onclick = () => {
+      refreshNow(); const got = tItems().filter(i=>i.bought);
       if (got.length) state.history.push({id:uid(), date:state.trip.date, items:got.map(i=>({pid:i.pid, store:i.bought.store, price:i.bought.price}))});
       state.trip = null; ui.confirming=null; ui.tab="list"; touch(); render(); };
     c.querySelector('[data-a="cancel"]').onclick = () => { ui.confirming=null; render(); };
@@ -541,7 +546,7 @@ function cancelTripControl(main){
   const w = el(`<div style="margin-top:14px"></div>`);
   if (ui.confirming === "cancel") {
     const c = el(`<div class="confirm"><span>Cancel this trip without saving any prices? Your saved items stay.</span><button class="primary" type="button" data-a="ok">Cancel trip</button><button class="ghost" type="button" data-a="no">Keep going</button></div>`);
-    c.querySelector('[data-a="ok"]').onclick = () => { state.trip=null; ui.confirming=null; touch(); render(); };
+    c.querySelector('[data-a="ok"]').onclick = () => { refreshNow(); state.trip=null; ui.confirming=null; touch(); render(); };
     c.querySelector('[data-a="no"]').onclick = () => { ui.confirming=null; render(); };
     w.appendChild(c);
   } else { const b = el(`<button class="ghost danger" type="button">Cancel this trip</button>`); b.onclick = () => { ui.confirming="cancel"; render(); }; w.appendChild(b); }
@@ -829,9 +834,184 @@ async function lookupName(code){
   } catch(e){ return null; }
 }
 
+/* ===== SHARED SYNC (Firebase) =====
+   Only active in the installed app (the Firebase scripts are added there). Everything lives under households/main:
+   meta/info {stores, trip:{date}|null} · products/{id} · history/{id} · tripItems/{productId}            */
+const FB_CONFIG = {
+  apiKey: "AIzaSyD_7ZixwAGKZ6OVJ1_L1IiDf3GIJzTZLhE",
+  authDomain: "palengke-list-6f74a.firebaseapp.com",
+  projectId: "palengke-list-6f74a",
+  storageBucket: "palengke-list-6f74a.firebasestorage.app",
+  messagingSenderId: "567189795227",
+  appId: "1:567189795227:web:f4ff5767549ec92066713e"
+};
+const SYNC = !!(window.firebase && firebase.initializeApp);
+const sync = {status: SYNC ? "starting" : "off", user:null, auth:null, db:null, unsubs:[], ready:false, synced:null, r:null, pending:false, err:"", online:navigator.onLine};
+const NORM = {
+  meta: m => ({stores:(m.stores||[]).map(s=>({id:s.id, name:s.name})), trip: m.trip ? {date:m.trip.date} : null}),
+  product: p => ({name:p.name, stores:p.stores||[], codes:p.codes||[]}),
+  history: h => ({date:h.date, items:(h.items||[]).map(i=>({pid:i.pid, store:i.store, price:i.price}))}),
+  trip: t => ({skip:t.skip||[], bought: t.bought ? {store:t.bought.store, price:t.bought.price} : null, added:t.added||0})
+};
+const J = x => JSON.stringify(x);
+function localDocs(st){
+  const o = {meta:J(NORM.meta(st)), products:{}, history:{}, tripItems:{}};
+  st.products.forEach(p => o.products[p.id] = J(NORM.product(p)));
+  st.history.forEach(h => o.history[h.id] = J(NORM.history(h)));
+  if (st.trip) st.trip.items.forEach(t => o.tripItems[t.pid] = J(NORM.trip(t)));
+  return o;
+}
+function remoteDocs(r){
+  const o = {meta: r.meta ? J(NORM.meta(r.meta)) : "", products:{}, history:{}, tripItems:{}};
+  ["products","history","tripItems"].forEach(c => { const n = c==="products"?NORM.product:c==="history"?NORM.history:NORM.trip;
+    for (const id in r[c]) o[c][id] = J(n(r[c][id])); });
+  return o;
+}
+function push(){
+  if (!SYNC || !sync.ready || !sync.db) return;
+  const next = localDocs(state), prev = sync.synced, ops = [];
+  const base = sync.db.doc("households/main");
+  if (next.meta !== prev.meta) ops.push(b => b.set(base.collection("meta").doc("info"), JSON.parse(next.meta)));
+  ["products","history","tripItems"].forEach(c => {
+    for (const id in next[c]) if (next[c][id] !== prev[c][id]) ops.push(b => b.set(base.collection(c).doc(id), JSON.parse(next[c][id])));
+    for (const id in prev[c]) if (!(id in next[c])) ops.push(b => b.delete(base.collection(c).doc(id)));
+  });
+  sync.synced = next;
+  for (let i = 0; i < ops.length; i += 400) {
+    const b = sync.db.batch(); ops.slice(i, i+400).forEach(f => f(b));
+    b.commit().catch(e => { sync.err = e.code === "permission-denied" ? "This account isn't allowed to change the shared list." : "Couldn't save a change. It will retry when you're back online."; render(); });
+  }
+}
+function stateFromRemote(r){
+  const st = {sample:false,
+    stores: r.meta && Array.isArray(r.meta.stores) ? NORM.meta(r.meta).stores : JSON.parse(J(DEFAULT_STORES)),
+    products: Object.entries(r.products).map(([id,d]) => ({id, ...NORM.product(d)})).sort((a,b)=>a.name.localeCompare(b.name)),
+    history: Object.entries(r.history).map(([id,d]) => ({id, ...NORM.history(d)})).sort((a,b)=>a.date.localeCompare(b.date) || a.id.localeCompare(b.id)),
+    trip: null};
+  if (r.meta && r.meta.trip) st.trip = {date:r.meta.trip.date, items:Object.entries(r.tripItems).map(([pid,d]) => ({pid, ...NORM.trip(d)})).filter(t => st.products.some(p=>p.id===t.pid)).sort((a,b)=>a.added-b.added)};
+  return st;
+}
+// hold partner updates only while something half-typed would be lost (an open editor, the scanner, a store name)
+const busy = () => { const a = document.activeElement; return !!(scan || ui.editing || (a && a.closest && a.closest(".storeedit, .edit, .editor") && $("main").contains(a))); };
+function refreshNow(){ if (SYNC && sync.ready && sync.pending) { sync.pending = false; state = stateFromRemote(sync.r); sync.synced = remoteDocs(sync.r); } }
+function applyRemote(){
+  if (busy()) { sync.pending = true; return; }
+  sync.pending = false;
+  state = stateFromRemote(sync.r);
+  sync.synced = remoteDocs(sync.r);
+  if (!state.stores.some(s=>s.id===ui.store)) ui.store = state.stores[0]?.id || null;
+  try { localStorage.setItem(KEY, J(state)); } catch(e){}
+  render();
+}
+function mergeLocalInto(local){
+  // bring this phone's own items and price history into the shared list, once
+  const map = {};
+  local.products.forEach(lp => {
+    let p = state.products.find(x => norm(x.name) === norm(lp.name) || (lp.codes||[]).some(c => (x.codes||[]).includes(c)));
+    if (!p) { p = {id:uid(), name:lp.name, stores:lp.stores||[], codes:[]}; state.products.push(p); }
+    (lp.codes||[]).forEach(c => { p.codes = p.codes || []; if (!p.codes.includes(c)) p.codes.push(c); });
+    map[lp.id] = p.id;
+  });
+  local.history.forEach(h => state.history.push({id:uid(), date:h.date, items:h.items.filter(i=>map[i.pid]).map(i=>({...i, pid:map[i.pid]}))}));
+  state.history = state.history.filter(h=>h.items.length).sort((a,b)=>a.date.localeCompare(b.date));
+}
+function firstLoad(fromCache){
+  const r = sync.r, empty = !r.meta && !Object.keys(r.products).length && !Object.keys(r.history).length;
+  if (empty && fromCache) return;                       // wait for the server before deciding the shared list is empty
+  const local = (state && !state.sample && Array.isArray(state.products)) ? state : null;
+  let merged = false; try { merged = localStorage.getItem(KEY+"-merged") === "1"; } catch(e){}
+  state = stateFromRemote(r);
+  sync.synced = remoteDocs(r);
+  if (local && !merged) {
+    if (empty) { state = {sample:false, stores:local.stores, products:local.products, history:local.history, trip:local.trip}; if (state.trip) state.trip.items.forEach((t,i)=>t.added = t.added || i+1); }
+    else mergeLocalInto(local);
+  }
+  try { localStorage.setItem(KEY+"-merged","1"); } catch(e){}
+  sync.ready = true; sync.status = "ready";
+  if (!state.stores.some(s=>s.id===ui.store)) ui.store = state.stores[0]?.id || null;
+  push(); render();
+}
+function listen(){
+  stopListening();
+  const base = sync.db.doc("households/main");
+  sync.r = {meta:null, products:{}, history:{}, tripItems:{}};
+  const got = {}, cache = {};
+  const onErr = e => { sync.status = e.code === "permission-denied" ? "denied" : "error"; sync.err = e.message; stopListening(); render(); };
+  const after = (key, fromCache) => { got[key] = true; cache[key] = fromCache;
+    if (Object.keys(got).length < 4) return;
+    if (!sync.ready) firstLoad(Object.values(cache).some(Boolean)); else applyRemote(); };
+  sync.unsubs.push(base.collection("meta").doc("info").onSnapshot({includeMetadataChanges:true}, s => { sync.r.meta = s.exists ? s.data() : null; after("meta", s.metadata.fromCache); }, onErr));
+  ["products","history","tripItems"].forEach(c => sync.unsubs.push(base.collection(c).onSnapshot({includeMetadataChanges:true}, qs => {
+    qs.docChanges().forEach(ch => { if (ch.type === "removed") delete sync.r[c][ch.doc.id]; else sync.r[c][ch.doc.id] = ch.doc.data(); });
+    after(c, qs.metadata.fromCache); }, onErr)));
+}
+function stopListening(){ sync.unsubs.forEach(u => { try { u(); } catch(e){} }); sync.unsubs = []; sync.ready = false; }
+function authError(e){
+  const c = e && e.code || "";
+  if (c === "auth/popup-closed-by-user" || c === "auth/cancelled-popup-request") return "";
+  if (c === "auth/unauthorized-domain") return "Sign-in is blocked for this website. In Firebase, add meow-w11.github.io under Authentication → Settings → Authorized domains.";
+  if (c === "auth/operation-not-allowed") return "Google sign-in isn't turned on yet. In Firebase, enable Google under Authentication → Sign-in method.";
+  if (c === "auth/network-request-failed") return "No internet connection. Connect once to sign in; after that the app works offline.";
+  return "Sign-in didn't work (" + (c || "unknown error") + "). Try again.";
+}
+async function signIn(){
+  sync.err = ""; const p = new firebase.auth.GoogleAuthProvider(); p.setCustomParameters({prompt:"select_account"});
+  try { await sync.auth.signInWithPopup(p); }
+  catch (e) {
+    if (["auth/popup-blocked","auth/operation-not-supported-in-this-environment"].includes(e.code)) { try { await sync.auth.signInWithRedirect(p); return; } catch(e2){ e = e2; } }
+    sync.err = authError(e); render();
+  }
+}
+function signOut(){ stopListening(); sync.auth.signOut(); }
+function startSync(){
+  if (!SYNC) { render(); return; }
+  firebase.initializeApp(FB_CONFIG);
+  sync.auth = firebase.auth(); sync.db = firebase.firestore();
+  sync.db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+  sync.auth.getRedirectResult().catch(e => { if (["auth/unauthorized-domain","auth/operation-not-allowed"].includes(e.code)) { sync.err = authError(e); render(); } });
+  sync.auth.onAuthStateChanged(u => {
+    sync.user = u; sync.err = sync.err || "";
+    if (u) { sync.status = "loading"; listen(); } else { stopListening(); sync.status = "signedout"; }
+    render();
+  });
+  addEventListener("online", () => { sync.online = true; render(); });
+  addEventListener("offline", () => { sync.online = false; render(); });
+  $("main").addEventListener("focusout", () => setTimeout(() => { if (sync.pending && !busy()) applyRemote(); }, 0));
+  render();
+}
+function renderGate(main){
+  const w = el(`<div class="home"></div>`);
+  if (sync.status === "starting" || (sync.user && sync.status === "loading")) {
+    w.appendChild(el(`<div class="empty">${sync.user ? "Loading your shared list…" : "Starting…"}</div>`));
+  } else if (sync.status === "denied") {
+    const c = el(`<div class="card"><b>This account doesn't have access</b><div class="hint" style="font-size:.85rem"></div><div class="form-foot"><span></span><button class="primary" type="button">Use a different account</button></div></div>`);
+    c.querySelector(".hint").textContent = `${sync.user?.email || "This Google account"} isn't on the list of people who can open this grocery list. Sign in with the Google account you set up for Palengke List.`;
+    c.querySelector("button").onclick = () => { sync.err = ""; signOut(); };
+    w.appendChild(c);
+  } else if (sync.status === "error") {
+    const c = el(`<div class="card"><b>Couldn't load the shared list</b><div class="hint" style="font-size:.85rem">Check your connection, then try again.</div><div class="form-foot"><button class="ghost" type="button" data-a="out">Sign out</button><button class="primary" type="button" data-a="retry">Try again</button></div></div>`);
+    c.querySelector('[data-a="retry"]').onclick = () => { sync.status = "loading"; listen(); render(); };
+    c.querySelector('[data-a="out"]').onclick = signOut;
+    w.appendChild(c);
+  } else {
+    const b = el(`<button class="start" type="button"><span>Sign in with Google<small>You and your partner share one list and one price history</small></span><span class="arrow">→</span></button>`);
+    b.onclick = signIn; w.appendChild(b);
+    if (sync.err) { const m = el(`<div class="warnbox"></div>`); m.textContent = sync.err; w.appendChild(m); }
+  }
+  main.appendChild(w);
+}
+function accountLine(){
+  if (!SYNC || !sync.user) return null;
+  const a = el(`<div class="hint" style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><span></span><button class="ghost" type="button">Sign out</button></div>`);
+  a.firstChild.textContent = (sync.online ? "Synced · " : "Offline · changes sync when you're back online · ") + sync.user.email;
+  a.querySelector("button").onclick = signOut;
+  return a;
+}
+
 /* ===== shell ===== */
 function render(){
   const main = $("main"); const st = main.scrollTop; main.innerHTML = "";
+  if (SYNC && !sync.ready) { $("tabs").hidden = true; $("foot").hidden = true; $("tripDate").textContent = ""; renderGate(main); return; }
   const inTrip = !!state.trip;
   const showHome = !inTrip && ui.tab !== "prices";
   $("tabs").hidden = !inTrip;
@@ -843,6 +1023,7 @@ function render(){
   else if (ui.tab==="shop") renderShop(main);
   else renderList(main);
   main.scrollTop = st;
+  if (sync.pending && !busy()) setTimeout(applyRemote, 0);
   if (inTrip) {
     const items = tItems(), got = items.filter(i=>i.bought);
     $("total").textContent = peso(got.reduce((a,i)=>a+i.bought.price,0));
@@ -853,7 +1034,7 @@ function render(){
 }
 function setTab(t){ ui.tab=t; ui.editing=null; ui.confirming=null; if (t!=="prices") ui.product=null; save(); render(); $("main").scrollTop=0; }
 document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
-render();
+startSync();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 
