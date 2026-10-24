@@ -131,6 +131,15 @@ footer .right{text-align:right;font-family:var(--mono);font-size:.78rem;color:va
 .bar{height:6px;background:var(--soft);border-radius:4px;margin-top:6px;width:120px;overflow:hidden;margin-left:auto}
 .bar i{display:block;height:100%;background:var(--accent);border-radius:4px}
 .storeedit{display:grid;grid-template-columns:1fr auto;gap:6px;margin-top:6px}
+.li-row{display:grid;grid-template-columns:1fr auto;align-items:center}
+.stepper{display:inline-flex;align-items:center;background:var(--soft);border-radius:999px;margin-right:10px}
+.stepper button{background:none;width:36px;height:36px;border-radius:999px;font-size:1.15rem;font-weight:700;color:var(--accent);padding:0}
+.stepper button:disabled{color:var(--muted);opacity:.45;cursor:default}
+.stepper b{min-width:22px;text-align:center;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.qx{font-family:var(--mono);font-weight:700;color:var(--accent);margin-right:4px}
+.qtyrow{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.qtyrow .stepper{margin-right:0}
+.each{font-family:var(--mono);font-size:.72rem;color:var(--muted);display:block;text-align:right;font-weight:500}
 .qrow{display:grid;grid-template-columns:1fr auto;gap:6px}
 .scanbtn{background:var(--soft);color:var(--accent);border-radius:10px;font-weight:700;padding:0 14px;display:inline-flex;align-items:center;gap:6px}
 .scanbtn svg{width:18px;height:18px;fill:currentColor}
@@ -243,13 +252,26 @@ if (!state.stores.some(s=>s.id===ui.store)) ui.store = state.stores[0]?.id || nu
 /* price history for a product, oldest → newest; */
 function purchases(pid){
   const out = [];
-  state.history.forEach(h => h.items.forEach(it => { if (it.pid===pid) out.push({date:h.date, store:it.store, price:it.price, hid:h.id}); }));
+  state.history.forEach(h => h.items.forEach(it => { if (it.pid===pid) out.push({date:h.date, store:it.store, price:it.price, qty:qtyOf(it), hid:h.id}); }));
   out.sort((a,b)=>a.date.localeCompare(b.date));
   return out;
 }
 const lastBuy = pid => { const p = purchases(pid); return p[p.length-1]; };
 const timesBought = pid => state.history.reduce((n,h)=>n+(h.items.some(i=>i.pid===pid)?1:0),0);
 
+/* quantities: price is always per piece; a trip item and a history line carry how many */
+const qtyOf = t => (t && t.qty > 0) ? t.qty : 1;
+const lineTotal = t => t.bought ? t.bought.price * qtyOf(t) : 0;
+const histTotal = h => h.items.reduce((a,i)=>a + i.price * qtyOf(i), 0);
+function stepper(value, onChange, label){
+  const st = el(`<span class="stepper" role="group"><button type="button" data-d="-1">−</button><b aria-live="polite"></b><button type="button" data-d="1">+</button></span>`);
+  st.setAttribute("aria-label", "How many " + (label||""));
+  const [minus, plus] = st.querySelectorAll("button"); minus.setAttribute("aria-label","One less"); plus.setAttribute("aria-label","One more");
+  const paint = v => { st.querySelector("b").textContent = v; minus.disabled = v <= 1; };
+  paint(value);
+  st.querySelectorAll("button").forEach(b => b.onclick = e => { e.stopPropagation(); value = Math.max(1, Math.min(99, value + +b.dataset.d)); paint(value); onChange(value); });
+  return st;
+}
 /* trip helpers */
 const tItems = () => state.trip ? state.trip.items : [];
 const options = ti => { const p = prod(ti.pid); return ((p && p.stores.length) ? p.stores : state.stores.map(s=>s.id)).filter(s => !ti.skip.includes(s)); };
@@ -297,17 +319,21 @@ function renderHome(main){
   const last = state.history[state.history.length-1];
   const links = el(`<div class="homelinks">
     <button type="button" data-go="prices"><div class="k">Price history</div><div class="v">${(n=>n+" item"+(n===1?"":"s"))(state.products.filter(p=>purchases(p.id).length).length)}</div></button>
-    <button type="button" data-go="prices"><div class="k">Last trip</div><div class="v">${last ? peso0(last.items.reduce((a,i)=>a+i.price,0)) : "—"}</div><div class="hint" style="margin:2px 0 0">${last ? fmtDate(last.date,true) : "No trips yet"}</div></button>
+    <button type="button" data-go="prices"><div class="k">Last trip</div><div class="v">${last ? peso0(histTotal(last)) : "—"}</div><div class="hint" style="margin:2px 0 0">${last ? fmtDate(last.date,true) : "No trips yet"}</div></button>
   </div>`);
   links.querySelectorAll("button").forEach(x => x.onclick = () => { ui.tab="prices"; ui.product=null; save(); render(); });
   wrap.appendChild(links);
+  const mi = el(`<button class="ghost" type="button" style="align-self:flex-start">Manage saved items (${state.products.length})</button>`);
+  mi.onclick = openItems; wrap.appendChild(mi);
   const acct = accountLine(); if (acct) wrap.appendChild(acct);
   main.appendChild(wrap);
 }
 
 /* ===== LIST ===== */
-function addToTrip(p){
-  if (!tItems().some(t=>t.pid===p.id)) state.trip.items.push({pid:p.id, skip:[], bought:null, added:Date.now()});
+function addToTrip(p, more){
+  const t = tItems().find(t=>t.pid===p.id);
+  if (!t) state.trip.items.push({pid:p.id, skip:[], bought:null, added:Date.now(), qty:1});
+  else if (more) t.qty = Math.min(99, qtyOf(t) + 1);
 }
 function renderList(main){
   sampleNote(main);
@@ -329,8 +355,9 @@ function renderList(main){
       const lb = lastBuy(p.id);
       const s = el(`<button type="button" class="sg"><span class="nm"></span><span class="meta"></span></button>`);
       s.querySelector(".nm").textContent = p.name;
-      s.querySelector(".meta").textContent = onTrip.has(p.id) ? "on list" : (lb ? "last " + peso0(lb.price) : "saved");
-      s.onclick = () => { if (!onTrip.has(p.id)) { addToTrip(p); } ui.query=""; touch(); render(); $("q")?.focus(); };
+      const ot = tItems().find(t=>t.pid===p.id);
+      s.querySelector(".meta").textContent = ot ? `on list ×${qtyOf(ot)} · tap for 1 more` : (lb ? "last " + peso0(lb.price) : "saved");
+      s.onclick = () => { addToTrip(p, true); ui.query=""; touch(); render(); $("q")?.focus(); };
       list.appendChild(s);
     });
     if (!exact) {
@@ -357,14 +384,16 @@ function renderList(main){
   q.oninput = paint;
   q.onkeydown = e => { if (e.key==="Enter") { e.preventDefault(); const v = norm(q.value); if(!v) return;
     const exact = state.products.find(p => norm(p.name)===v);
-    if (exact) { addToTrip(exact); ui.query=""; touch(); render(); $("q")?.focus(); } else renderNew(); } };
+    if (exact) { addToTrip(exact, true); ui.query=""; touch(); render(); $("q")?.focus(); } else renderNew(); } };
   main.appendChild(box);
   paint();
 
   // usuals: saved products not on this trip, most bought first
   const usual = state.products.filter(p => !onTrip.has(p.id)).sort((a,b)=>timesBought(b.id)-timesBought(a.id) || a.name.localeCompare(b.name));
   if (usual.length) {
-    main.appendChild(el(`<div class="label"><span>Saved items · tap to add</span></div>`));
+    const ul = el(`<div class="label"><span>Saved items · tap to add</span></div>`);
+    const mb = el(`<button class="ghost" type="button" style="padding:0;font-size:.72rem;letter-spacing:0;text-transform:none">Manage</button>`); mb.onclick = openItems; ul.appendChild(mb);
+    main.appendChild(ul);
     const u = el(`<div class="usual"></div>`);
     usual.slice(0, ui.showAllUsual ? 999 : 12).forEach(p => {
       const b = el(`<button type="button"></button>`); b.textContent = p.name;
@@ -382,10 +411,11 @@ function renderList(main){
     tItems().forEach(ti => {
       const p = prod(ti.pid); if (!p) return;
       const lb = lastBuy(p.id);
-      const r = el(`<div class="li${ti.bought?" bought":""}"><button type="button" class="li-main"><span class="nm"><span class="t"></span></span><span class="last"></span></button></div>`);
+      const r = el(`<div class="li${ti.bought?" bought":""}"><div class="li-row"><button type="button" class="li-main"><span class="nm"><span class="t"></span></span><span class="last"></span></button></div></div>`);
       r.querySelector(".t").textContent = p.name;
       r.querySelector(".nm").appendChild(storeTags(p));
-      r.querySelector(".last").textContent = ti.bought ? peso(ti.bought.price) : (lb ? "last " + peso0(lb.price) : "");
+      r.querySelector(".last").textContent = ti.bought ? peso(lineTotal(ti)) : (lb ? "last " + peso0(lb.price) + (qtyOf(ti)>1 ? " each" : "") : "");
+      r.querySelector(".li-row").appendChild(stepper(qtyOf(ti), v => { ti.qty = v; touch(); render(); }, p.name));
       r.querySelector(".li-main").onclick = () => { ui.editing = ui.editing===p.id ? null : p.id; render(); };
       if (ui.editing === p.id) r.appendChild(productEditor(p, ti));
       rows.appendChild(r);
@@ -453,8 +483,8 @@ function shopItem(ti, sid, kind){
   const card = el(`<div class="item${inCart?" in":""}${kind==="other"?" other":""}">
     <button class="item-main" type="button">
       <span class="box">${inCart?"✓":""}</span>
-      <span class="nm"><span class="t"></span><span class="tags"></span></span>
-      <span class="${inCart?"paid":"last"}">${inCart ? peso(ti.bought.price) : (lb ? "last "+peso0(lb.price) : "add price")}</span>
+      <span class="nm">${qtyOf(ti)>1 ? `<span class="qx">×${qtyOf(ti)}</span>` : ""}<span class="t"></span><span class="tags"></span></span>
+      <span class="${inCart?"paid":"last"}">${inCart ? peso(lineTotal(ti)) + (qtyOf(ti)>1 ? `<span class="each">${qtyOf(ti)} × ${peso(ti.bought.price)}</span>` : "") : (lb ? "last "+peso0(lb.price) + (qtyOf(ti)>1?" each":"") : "add price")}</span>
     </button></div>`);
   card.querySelector(".t").textContent = p.name;
   const tags = card.querySelector(".tags");
@@ -464,16 +494,23 @@ function shopItem(ti, sid, kind){
   card.querySelector(".item-main").onclick = () => { ui.editing = ui.editing===p.id ? null : p.id; render(); };
   if (ui.editing === p.id) {
     const ed = el(`<form class="editor" autocomplete="off">
-      <input class="num" type="number" inputmode="decimal" min="0" step="any" aria-label="Price paid for ${esc(p.name)}">
+      <div class="qtyrow"><span class="hint" style="margin:0">How many</span><span data-step></span><span class="hint" style="margin:0" data-sum></span></div>
+      <input class="num" type="number" inputmode="decimal" min="0" step="any" aria-label="Price per piece for ${esc(p.name)}">
       <button class="primary" type="submit">${inCart?"Update":"In cart"}</button>
       <div class="actions">${inCart?'<button class="ghost danger" type="button" data-a="out">Take out of cart</button>':(kind==="here"?'<button class="ghost danger" type="button" data-a="na">Not available here</button>':'<span></span>')}
       <button class="ghost" type="button" data-a="cancel">Cancel</button></div></form>`);
     const inp = ed.querySelector("input");
-    inp.placeholder = lb ? `Price (last ${peso0(lb.price)})` : "Price, ₱";
+    let q = qtyOf(ti);
+    const sum = ed.querySelector("[data-sum]");
+    const paintSum = () => { const v = parseFloat(inp.value); sum.textContent = q > 1 && Number.isFinite(v) ? `${q} × ${peso(v)} = ${peso(q*v)}` : ""; };
+    ed.querySelector("[data-step]").replaceWith(stepper(q, v => { q = v; inp.placeholder = placeholder(); paintSum(); }, p.name));
+    const placeholder = () => (q > 1 ? "Price each" : "Price") + (lb ? ` (last ${peso0(lb.price)})` : ", ₱");
+    inp.placeholder = placeholder();
     if (inCart) inp.value = ti.bought.price;
+    inp.addEventListener("input", paintSum); paintSum();
     ed.onsubmit = e => { e.preventDefault(); const v = parseFloat(inp.value);
       if (!Number.isFinite(v)) { inp.setCustomValidity("Enter the price on the tag."); inp.reportValidity(); inp.oninput=()=>inp.setCustomValidity(""); return; }
-      ti.bought = {store: inCart ? ti.bought.store : sid, price: v}; ui.editing=null; touch(); render(); };
+      ti.qty = q; ti.bought = {store: inCart ? ti.bought.store : sid, price: v}; ui.editing=null; touch(); render(); };
     ed.querySelector('[data-a="cancel"]').onclick = () => { ui.editing=null; render(); };
     const na = ed.querySelector('[data-a="na"]'); if (na) na.onclick = () => { if (!ti.skip.includes(sid)) ti.skip.push(sid); ui.editing=null; touch(); render(); };
     const out = ed.querySelector('[data-a="out"]'); if (out) out.onclick = () => { ti.bought=null; ui.editing=null; touch(); render(); };
@@ -505,7 +542,7 @@ function renderShop(main){
   here.forEach(ti => main.appendChild(shopItem(ti, sid, "here")));
 
   if (boughtHere.length) {
-    main.appendChild(el(`<div class="label"><span>In cart from ${esc(storeName(sid))} · ${boughtHere.length}</span><b>${peso(boughtHere.reduce((a,i)=>a+i.bought.price,0))}</b></div>`));
+    main.appendChild(el(`<div class="label"><span>In cart from ${esc(storeName(sid))} · ${boughtHere.length}</span><b>${peso(boughtHere.reduce((a,i)=>a+lineTotal(i),0))}</b></div>`));
     boughtHere.forEach(ti => main.appendChild(shopItem(ti, sid, "cart")));
   }
   const others = tItems().filter(i => !i.bought && !canBuyAt(i, sid));
@@ -530,7 +567,7 @@ function renderShop(main){
       <button class="primary" type="button" data-a="ok">Finish and save</button><button class="ghost" type="button" data-a="cancel">Cancel</button></div></div>`);
     c.querySelector('[data-a="ok"]').onclick = () => {
       refreshNow(); const got = tItems().filter(i=>i.bought);
-      if (got.length) state.history.push({id:uid(), date:state.trip.date, items:got.map(i=>({pid:i.pid, store:i.bought.store, price:i.bought.price}))});
+      if (got.length) state.history.push({id:uid(), date:state.trip.date, items:got.map(i=>({pid:i.pid, store:i.bought.store, price:i.bought.price, qty:qtyOf(i)}))});
       state.trip = null; ui.confirming=null; ui.tab="list"; touch(); render(); };
     c.querySelector('[data-a="cancel"]').onclick = () => { ui.confirming=null; render(); };
     wrap.appendChild(c);
@@ -595,7 +632,7 @@ function renderPrices(main){
   if (!trips.length) { main.appendChild(el(`<div class="empty">No finished trips yet. When you tap <b>Finish trip</b> in Shop, the prices you paid are saved here, and each item gets its own price chart.</div>`)); return; }
   main.appendChild(el(`<div class="label"><span>Spent per trip</span><span>${trips.length} trip${trips.length===1?"":"s"}</span></div>`));
   const tc = el(`<div class="card" style="margin-top:0"><div class="readout" id="tripRead"></div></div>`);
-  const pts = trips.slice(-12).map(t => ({label:fmtDate(t.date), value:t.items.reduce((a,i)=>a+i.price,0), t}));
+  const pts = trips.slice(-12).map(t => ({label:fmtDate(t.date), value:histTotal(t), t}));
   const pickTrip = i => { const p = pts[i]; tc.querySelector("#tripRead").innerHTML = `${esc(fmtDate(p.t.date,true))} <span>·</span> ${esc(peso(p.value))} <span>· ${p.t.items.length} item${p.t.items.length===1?"":"s"}</span>`;
     const old = tc.querySelector("div:not(.readout)"); const nw = barChart(pts, pickTrip, i); old ? old.replaceWith(nw) : tc.appendChild(nw); };
   tc.appendChild(barChart(pts, pickTrip, pts.length-1)); main.appendChild(tc); pickTrip(pts.length-1);
@@ -648,7 +685,7 @@ function renderProduct(main, p){
   main.appendChild(el(`<div class="label"><span>All prices</span></div>`));
   const t = el(`<table></table>`);
   buys.slice().reverse().forEach(x => {
-    const tr = el(`<tr><td class="d">${esc(fmtDate(x.date,true))}</td><td></td><td class="r">${esc(peso(x.price))}</td><td style="width:28px;text-align:right"><button class="ghost danger" type="button" aria-label="Delete this price" style="text-decoration:none">✕</button></td></tr>`);
+    const tr = el(`<tr><td class="d">${esc(fmtDate(x.date,true))}</td><td></td><td class="r">${esc(peso(x.price))}${x.qty>1?`<span class="each">× ${x.qty} = ${esc(peso(x.price*x.qty))}</span>`:""}</td><td style="width:28px;text-align:right"><button class="ghost danger" type="button" aria-label="Delete this price" style="text-decoration:none">✕</button></td></tr>`);
     tr.children[1].textContent = storeName(x.store);
     tr.querySelector("button").onclick = () => { const h = state.history.find(h=>h.id===x.hid); if (h) { h.items = h.items.filter(i=>!(i.pid===p.id && i.price===x.price && i.store===x.store)); state.history = state.history.filter(h=>h.items.length); } touch(); render(); };
     t.appendChild(tr);
@@ -765,8 +802,9 @@ function knownProduct(p){
   if (scan.mode === "register") { setStatus(`Already saved: <b>${esc(p.name)}</b>`); return; }
   if (scan.mode === "list") {
     const had = tItems().some(t=>t.pid===p.id);
-    if (!had) { addToTrip(p); scan.saved++; touch(); render(); }
-    setStatus(had ? `Already on your list: <b>${esc(p.name)}</b>` : `Added: <b>${esc(p.name)}</b>`); idleSheet(); return;
+    addToTrip(p, true); if (!had) scan.saved++; touch(); render();
+    const n = qtyOf(tItems().find(t=>t.pid===p.id));
+    setStatus(had ? `<b>${esc(p.name)}</b> ×${n} on your list` : `Added: <b>${esc(p.name)}</b>`); idleSheet(); return;
   }
   openPriceFor(p);
 }
@@ -850,8 +888,8 @@ const sync = {status: SYNC ? "starting" : "off", user:null, auth:null, db:null, 
 const NORM = {
   meta: m => ({stores:(m.stores||[]).map(s=>({id:s.id, name:s.name})), trip: m.trip ? {date:m.trip.date} : null}),
   product: p => ({name:p.name, stores:p.stores||[], codes:p.codes||[]}),
-  history: h => ({date:h.date, items:(h.items||[]).map(i=>({pid:i.pid, store:i.store, price:i.price}))}),
-  trip: t => ({skip:t.skip||[], bought: t.bought ? {store:t.bought.store, price:t.bought.price} : null, added:t.added||0})
+  history: h => ({date:h.date, items:(h.items||[]).map(i=>({pid:i.pid, store:i.store, price:i.price, qty:qtyOf(i)}))}),
+  trip: t => ({skip:t.skip||[], bought: t.bought ? {store:t.bought.store, price:t.bought.price} : null, added:t.added||0, qty:qtyOf(t)})
 };
 const J = x => JSON.stringify(x);
 function localDocs(st){
@@ -1008,26 +1046,104 @@ function accountLine(){
   return a;
 }
 
+/* ===== SAVED ITEMS (edit / delete for good) ===== */
+function openItems(){ ui.tab = "items"; ui.editing = null; ui.confirming = null; ui.itemQuery = ""; save(); render(); $("main").scrollTop = 0; }
+function deleteProduct(p){
+  state.products = state.products.filter(x => x !== p);
+  if (state.trip) state.trip.items = state.trip.items.filter(t => t.pid !== p.id);
+  state.history.forEach(h => h.items = h.items.filter(i => i.pid !== p.id));
+  state.history = state.history.filter(h => h.items.length);
+  if (ui.product === p.id) ui.product = null;
+}
+function renderItems(main){
+  const back = el(`<button class="back" type="button">${state.trip ? "← Back to list" : "← Home"}</button>`);
+  back.onclick = () => { ui.tab = "list"; ui.editing = null; ui.confirming = null; save(); render(); };
+  main.appendChild(back);
+  main.appendChild(el(`<h2 style="margin:6px 0 2px;font-size:1.2rem">Saved items</h2>`));
+  main.appendChild(el(`<div class="hint" style="margin-top:0">Rename an item, change its stores or barcodes, or delete it for good.</div>`));
+  const f = el(`<div class="card"><input id="itemQ" placeholder="Search saved items" aria-label="Search saved items" autocomplete="off"></div>`);
+  const q = f.querySelector("input"); q.value = ui.itemQuery || "";
+  main.appendChild(f);
+  const box = el(`<div style="margin-top:10px"></div>`); main.appendChild(box);
+  const paint = () => {
+    box.innerHTML = ""; const v = norm(q.value);
+    const list = state.products.filter(p => !v || norm(p.name).includes(v)).sort((a,b)=>a.name.localeCompare(b.name));
+    if (!state.products.length) { box.appendChild(el(`<div class="empty">No saved items yet. Items you add to a trip or scan are saved here.</div>`)); return; }
+    if (!list.length) { box.appendChild(el(`<div class="empty">No saved item matches “${esc(q.value)}”.</div>`)); return; }
+    const rows = el(`<div class="rows"></div>`);
+    list.forEach(p => {
+      const n = purchases(p.id).length;
+      const r = el(`<div class="li"><button type="button" class="li-main"><span class="nm"><span class="t"></span></span><span class="last"></span></button></div>`);
+      r.querySelector(".t").textContent = p.name;
+      r.querySelector(".nm").appendChild(storeTags(p));
+      r.querySelector(".last").textContent = (n ? n + " price" + (n===1?"":"s") : "no prices") + ((p.codes||[]).length ? " · ▥" : "");
+      r.querySelector(".li-main").onclick = () => { ui.editing = ui.editing===p.id ? null : p.id; ui.confirming = null; render(); };
+      if (ui.editing === p.id) r.appendChild(savedItemEditor(p));
+      rows.appendChild(r);
+    });
+    box.appendChild(rows);
+  };
+  q.oninput = () => { ui.itemQuery = q.value; paint(); };
+  paint();
+}
+function savedItemEditor(p){
+  const sel = p.stores.slice();
+  const ed = el(`<form class="edit" autocomplete="off">
+    <input aria-label="Item name">
+    <div class="cs"></div>
+    <div class="codes" data-codes></div>
+    <div class="form-foot"><button class="ghost danger" type="button" data-a="del">Delete item</button>
+      <span style="display:flex;gap:12px;align-items:center"><button class="ghost" type="button" data-a="cancel">Cancel</button><button class="primary" type="submit">Save</button></span></div>
+    <div data-confirm></div>
+  </form>`);
+  const n = ed.querySelector("input"); n.value = p.name;
+  ed.querySelector(".cs").replaceWith(chipRow(sel, id => { const i=sel.indexOf(id); i>=0?sel.splice(i,1):sel.push(id); }));
+  const cbox = ed.querySelector("[data-codes]");
+  const paintCodes = () => { cbox.innerHTML = ""; (p.codes||[]).forEach(c => {
+      const t = el(`<span class="code"></span>`); t.textContent = "▥ " + c;
+      const x = el(`<button type="button" aria-label="Remove barcode">✕</button>`); x.onclick = () => { p.codes = p.codes.filter(y=>y!==c); touch(); paintCodes(); };
+      t.appendChild(x); cbox.appendChild(t); }); };
+  paintCodes();
+  ed.onsubmit = e => { e.preventDefault(); const v = n.value.trim(); if (!v) return;
+    const dup = state.products.find(x => x!==p && norm(x.name)===norm(v));
+    if (dup) { n.setCustomValidity("You already have an item with this name."); n.reportValidity(); n.oninput=()=>n.setCustomValidity(""); return; }
+    p.name = v; p.stores = sel; ui.editing = null; touch(); render(); };
+  ed.querySelector('[data-a="cancel"]').onclick = () => { ui.editing = null; ui.confirming = null; render(); };
+  const cf = ed.querySelector("[data-confirm]");
+  const showConfirm = () => {
+    const n = purchases(p.id).length, onTrip = tItems().some(t=>t.pid===p.id);
+    const c = el(`<div class="warnbox"><div></div><div class="form-foot"><button class="ghost" type="button" data-a="no">Keep it</button><button class="primary" type="button" data-a="yes" style="background:var(--danger)">Delete for good</button></div></div>`);
+    c.firstChild.textContent = `Delete “${p.name}” for both of you?` + (n ? ` Its ${n} saved price${n===1?"":"s"} will be removed from your price history.` : "") + (onTrip ? " It will also come off this trip." : "") + " This can't be undone.";
+    c.querySelector('[data-a="no"]').onclick = () => { ui.confirming = null; cf.innerHTML = ""; };
+    c.querySelector('[data-a="yes"]').onclick = () => { deleteProduct(p); ui.editing = null; ui.confirming = null; touch(); render(); };
+    cf.innerHTML = ""; cf.appendChild(c);
+  };
+  ed.querySelector('[data-a="del"]').onclick = () => { ui.confirming = "del:" + p.id; showConfirm(); };
+  if (ui.confirming === "del:" + p.id) showConfirm();
+  return ed;
+}
+
 /* ===== shell ===== */
 function render(){
   const main = $("main"); const st = main.scrollTop; main.innerHTML = "";
   if (SYNC && !sync.ready) { $("tabs").hidden = true; $("foot").hidden = true; $("tripDate").textContent = ""; renderGate(main); return; }
   const inTrip = !!state.trip;
-  const showHome = !inTrip && ui.tab !== "prices";
+  const showHome = !inTrip && ui.tab !== "prices" && ui.tab !== "items";
   $("tabs").hidden = !inTrip;
   $("foot").hidden = !inTrip;
   $("tripDate").textContent = inTrip ? "Trip · " + fmtDate(state.trip.date, true) : "";
   document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab===ui.tab));
   if (showHome) renderHome(main);
   else if (ui.tab==="prices") renderPrices(main);
+  else if (ui.tab==="items") renderItems(main);
   else if (ui.tab==="shop") renderShop(main);
   else renderList(main);
   main.scrollTop = st;
   if (sync.pending && !busy()) setTimeout(applyRemote, 0);
   if (inTrip) {
     const items = tItems(), got = items.filter(i=>i.bought);
-    $("total").textContent = peso(got.reduce((a,i)=>a+i.bought.price,0));
-    $("prog").textContent = `${got.length} of ${items.length} items`;
+    $("total").textContent = peso(got.reduce((a,i)=>a+lineTotal(i),0));
+    $("prog").textContent = `${got.length} of ${items.length} items` + (items.some(i=>qtyOf(i)>1) ? ` · ${items.reduce((a,i)=>a+qtyOf(i),0)} pcs` : "");
     $("barFill").style.width = items.length ? (got.length/items.length*100)+"%" : "0%";
   }
   const q = $("q"); if (q && document.activeElement !== q && ui.query) q.focus();
