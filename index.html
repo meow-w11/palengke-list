@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#8ad11f" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0b1b20" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
@@ -234,6 +234,31 @@ footer .right{white-space:nowrap}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:70;background:var(--fg);color:var(--bg);border-radius:12px;padding:10px 14px;display:flex;gap:14px;align-items:center;font-size:.88rem;box-shadow:0 4px 16px rgb(0 0 0 / .25);max-width:calc(100% - 32px)}
 .toast button{background:none;color:var(--accent);font-weight:700;padding:0}
 .gesture-tip{font-size:.72rem;color:var(--muted);margin:6px 0 0}
+/* app feel: no text highlight on press-and-hold, no double-tap zoom; typing boxes stay selectable */
+html{touch-action:manipulation;-webkit-text-size-adjust:100%}
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+/* sort button */
+.sortbtn{display:inline-flex;align-items:center;justify-content:center;width:34px;height:30px;border-radius:9px;background:var(--soft);color:var(--muted);padding:0;position:relative}
+.sortbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.sortbtn.on{background:var(--accent);color:var(--accent-ink)}
+.sheet button.act[aria-checked="true"]{font-weight:700}
+.sheet button.act[aria-checked="true"]::after{content:"✓";float:right;color:var(--link)}
+/* rotating saved-item suggestion */
+.suggestrow{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px}
+.rot{flex:1;min-width:0;display:flex;align-items:center;gap:8px;border:1px dashed var(--line);background:var(--surface);border-radius:12px;padding:9px 12px;text-align:left}
+.rot .k{font-size:.66rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);white-space:nowrap}
+.rot .v{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:opacity .35s ease}
+.rot .v.fade{opacity:0}
+.rot .plus{color:var(--link);font-weight:700}
+@media (prefers-reduced-motion:reduce){.rot .v{transition:none}}
+/* editable trip date in the header */
+.tripdate{position:relative;display:inline-flex;align-items:center;gap:6px;font-size:.78rem;color:var(--link);font-weight:700;background:var(--soft);border-radius:999px;padding:5px 10px;cursor:pointer}
+.tripdate svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.tripdate input{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer;font-size:16px}
+.tripdate input::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.rotx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.rot .plus{font-size:1.3rem;line-height:1;padding:0 4px}
 </style>
 </head>
 <body>
@@ -241,7 +266,7 @@ footer .right{white-space:nowrap}
 
 <div class="app">
   <header class="pad" id="hdr">
-    <div class="top"><h1>Palengke List</h1><span id="tripDate" class="hint" style="margin:0"></span></div>
+    <div class="top"><h1>Palengke List</h1><label class="tripdate" id="tripWrap" hidden><span id="tripDate"></span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><input type="date" id="tripdate" aria-label="Trip date"></label></div>
     <div class="tabs" role="tablist" id="tabs">
       <button data-tab="list" role="tab" type="button">List</button>
       <button data-tab="shop" role="tab" type="button">Shop</button>
@@ -333,7 +358,7 @@ function migrate(){
   });
   return s;
 }
-let ui = {tab:"list", store:null, editing:null, draft:null, newDraft:null, confirming:null, addStores:[], product:null, query:"", shopQuery:"", openOthers:false, sort:"added", backTab:"list"};
+let ui = {rotIdx:0, showSaved:false, tab:"list", store:null, editing:null, draft:null, newDraft:null, confirming:null, addStores:[], product:null, query:"", shopQuery:"", openOthers:false, sort:"added", backTab:"list"};
 try { Object.assign(ui, JSON.parse(localStorage.getItem(KEY+"-ui")) || {}); } catch(e){}
 Object.assign(ui, {editing:null, draft:null, newDraft:null, confirming:null, query:"", shopQuery:""});
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); localStorage.setItem(KEY+"-ui", JSON.stringify({tab:ui.tab,store:ui.store,addStores:ui.addStores,product:ui.product,sort:ui.sort})); } catch(e){} if (typeof push === "function") push(); };
@@ -549,6 +574,7 @@ function sheet(title, actions){
   const close = () => bgEl.remove();
   [...actions.filter(Boolean), {label:"Cancel", run:()=>{}}].forEach(a => {
     const b = el(`<button type="button" class="act${a.danger ? " danger" : ""}"></button>`); b.textContent = a.label;
+    if (a.checked != null) { b.setAttribute("role", "menuitemradio"); b.setAttribute("aria-checked", a.checked); }
     b.onclick = () => { close(); a.run(); }; sh.appendChild(b);
   });
   bgEl.onclick = e => { if (e.target === bgEl) close(); };
@@ -570,6 +596,11 @@ function removeFromTrip(pid){
   toast(`Removed ${p ? p.name : "item"}`, () => { if (state.trip && !tItem(pid)) { state.trip.items.push(saved); touch(); render(); } });
 }
 function openChart(pid){ ui.backTab = ui.tab; ui.tab = "prices"; ui.product = pid; closeEditor(); save(); render(); $("main").scrollTop = 0; }
+
+/* no pinch zoom inside the app */
+["gesturestart","gesturechange","gestureend"].forEach(t => document.addEventListener(t, e => e.preventDefault(), {passive:false}));
+document.addEventListener("touchmove", e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, {passive:false});
+let rotTimer = null;
 
 /* ===== HOME ===== */
 function startTrip(){ if (state.sample) clearSample(); state.trip = {date:today(), items:[]}; ui.tab="list"; validStore(); save(); render(); setTimeout(()=>$("q")?.focus(),50); }
@@ -604,11 +635,6 @@ function addToTrip(p, more){
 }
 function renderList(main){
   sampleNote(main);
-  // trip date
-  const tr = el(`<div class="triprow"><label for="tripdate">Trip date</label><input type="date" id="tripdate"></div>`);
-  const di = tr.querySelector("input"); di.value = state.trip.date;
-  di.onchange = () => { if (!di.value) { di.value = state.trip.date; return; } state.trip.date = di.value; touch(); render(); };
-  main.appendChild(tr);
 
   const box = el(`<div class="card">
     <div class="qrow"><input id="q" placeholder="Type an item, e.g. Patis" aria-label="Item to buy" autocomplete="off" enterkeyhint="done"><span data-scan></span></div>
@@ -682,18 +708,37 @@ function renderList(main){
   // saved items not on this trip, most bought first
   const onTrip = new Set(tItems().map(t=>t.pid));
   const usual = state.products.filter(p => !onTrip.has(p.id)).sort((a,b)=>timesBought(b.id)-timesBought(a.id) || a.name.localeCompare(b.name));
-  if (usual.length) {
+  if (usual.length && !ui.showSaved) {
+    // one suggestion at a time, from things you've bought before (latest first), fading to the next every 1.4 s
+    const lastDate = pid => { let d = ""; state.history.forEach(h => { if (h.date > d && h.items.some(i=>i.pid===pid)) d = h.date; }); return d; };
+    const bought = usual.filter(p => timesBought(p.id)).sort((a,b)=>lastDate(b.id).localeCompare(lastDate(a.id)) || timesBought(b.id)-timesBought(a.id));
+    const pool = (bought.length ? bought : usual).slice(0, 12);
+    const row = el(`<div class="suggestrow"><button type="button" class="rot" aria-live="polite"><span class="rotx"><span class="k">Bought before · tap to add</span><span class="v"></span></span><span class="plus">+</span></button><button class="ghost" type="button">All saved (${usual.length})</button></div>`);
+    const v = row.querySelector(".v");
+    let i = ui.rotIdx % pool.length || 0;
+    const show = () => { v.textContent = pool[i].name; };
+    show();
+    row.querySelector(".rot").onclick = () => { const p = prod(pool[i].id); if (p) { addToTrip(p); touch(); render(); } };
+    row.querySelector(".ghost").onclick = () => { ui.showSaved = true; render(); };
+    if (pool.length > 1) rotTimer = setInterval(() => {
+      if (!v.isConnected) { clearInterval(rotTimer); return; }
+      v.classList.add("fade");
+      setTimeout(() => { i = (i + 1) % pool.length; ui.rotIdx = i; show(); v.classList.remove("fade"); }, 350);
+    }, 1400);
+    main.appendChild(row);
+  } else if (usual.length) {
     const ul = el(`<div class="label"><span>Saved items · tap to add</span></div>`);
-    const mb = el(`<button class="ghost" type="button" style="padding:0;font-size:.72rem;letter-spacing:0;text-transform:none">Manage</button>`); mb.onclick = openItems; ul.appendChild(mb);
-    main.appendChild(ul);
+    const ctr = el(`<span style="display:flex;gap:14px"></span>`);
+    const mb = el(`<button class="ghost" type="button" style="padding:0;font-size:.72rem;letter-spacing:0;text-transform:none">Manage</button>`); mb.onclick = openItems;
+    const hb = el(`<button class="ghost" type="button" style="padding:0;font-size:.72rem;letter-spacing:0;text-transform:none">Hide</button>`); hb.onclick = () => { ui.showSaved = false; render(); };
+    ctr.append(mb, hb); ul.appendChild(ctr); main.appendChild(ul);
     const u = el(`<div class="usual"></div>`);
-    usual.slice(0, ui.showAllUsual ? 999 : 12).forEach(p => {
+    usual.forEach(p => {
       const b = el(`<button type="button"></button>`); b.textContent = p.name;
       b.onclick = () => { addToTrip(p); touch(); render(); };
       u.appendChild(b);
     });
     main.appendChild(u);
-    if (usual.length > 12) { const m = el(`<button class="ghost" type="button">${ui.showAllUsual?"Show fewer":"Show all "+usual.length}</button>`); m.onclick=()=>{ui.showAllUsual=!ui.showAllUsual;render();}; main.appendChild(m); }
   }
 
   const items = sortItems(tItems());
@@ -713,7 +758,7 @@ function renderList(main){
       if (ti.est) tags.appendChild(el(`<span class="tag budget">budget ${esc(peso0(ti.est))}</span>`));
       r.querySelector(".nm").appendChild(tags);
       r.querySelector(".last").textContent = ti.bought ? peso(lineTotal(ti)) : (lb ? "last " + peso0(lb.price) + unitLbl(p) : "");
-      if (isKg(p)) r.querySelector(".li-row").appendChild(el(`<span class="kgnote">by kg</span>`));
+      if (isKg(p)) { if (!ti.bought) r.querySelector(".li-row").appendChild(el(`<span class="kgnote">by kg</span>`)); }
       else r.querySelector(".li-row").appendChild(stepper(qtyOf(ti), v => { const cur = tItem(p.id); if (cur) { cur.qty = v; touch(); render(); } }, p.name));
       const openIt = () => { const cur = tItem(p.id); if (!cur) return; openEditor(p.id, {kind:"list", f:fieldsOf(prod(p.id)), est: cur.est ? String(cur.est) : ""}); render(); };
       r.querySelector(".li-main").onclick = () => { if (ui.editing === p.id) { closeEditor(); render(); } else openIt(); };
@@ -739,7 +784,15 @@ function renderList(main){
   if (items.length) { const go = el(`<button class="primary" type="button" style="width:100%;margin-top:18px">Go shopping →</button>`); go.onclick = () => setTab("shop"); main.appendChild(go); }
   cancelTripControl(main);
 }
+const SORTS = [["added","Order added"],["az","Name, A to Z"],["hi","Price, highest first"],["lo","Price, lowest first"]];
 function sortToggle(){
+  const cur = SORTS.find(s => s[0] === ui.sort) || SORTS[0];
+  const b = el(`<button type="button" class="sortbtn${ui.sort && ui.sort !== "added" ? " on" : ""}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg></button>`);
+  b.setAttribute("aria-label", "Sort: " + cur[1]);
+  b.onclick = () => sheet("Sort by", SORTS.map(([k,label]) => ({label, checked: (ui.sort||"added") === k, run: () => { ui.sort = k; save(); render(); }})));
+  return b;
+}
+function sortToggleOld(){
   const seg = el(`<span class="seg" role="group" aria-label="Sort"><button type="button" data-s="added">Added</button><button type="button" data-s="az">A–Z</button><button type="button" data-s="hi" aria-label="Price, highest first">₱ ↓</button><button type="button" data-s="lo" aria-label="Price, lowest first">₱ ↑</button></span>`);
   seg.querySelectorAll("button").forEach(b => { b.setAttribute("aria-pressed", ui.sort === b.dataset.s); b.onclick = () => { ui.sort = b.dataset.s; save(); render(); }; });
   return seg;
@@ -1383,7 +1436,7 @@ function stateFromRemote(r){
 let lastTyped = 0, holdTimer = null;
 addEventListener("input", () => { lastTyped = Date.now(); }, true);
 addEventListener("click", () => { lastTyped = 0; refreshNow(); }, true);     // a tap means typing is done; act on the latest shared list
-addEventListener("keydown", e => { if (e.key === "Enter") refreshNow(); }, true);
+addEventListener("keydown", e => { if (e.key === "Enter") { lastTyped = 0; refreshNow(); } }, true);
 addEventListener("change", () => refreshNow(), true);
 const busy = () => { const a = document.activeElement; return !!(scan || (a && a.tagName === "INPUT" && a.type !== "date" && $("main").contains(a) && Date.now() - lastTyped < 4000)); };
 function refreshNow(){ if (SYNC && sync.ready && sync.pending) { sync.pending = false; state = stateFromRemote(sync.r); sync.synced = remoteDocs(sync.r); } }
@@ -1612,16 +1665,17 @@ function renderStores(main){
 
 /* ===== shell ===== */
 function render(){
-  const main = $("main"); const st = main.scrollTop;
+  const main = $("main"); const st = main.scrollTop; clearInterval(rotTimer);
   const a = document.activeElement, keep = a && a.id && main.contains(a) ? {id:a.id, s:a.selectionStart, e:a.selectionEnd} : null;
   main.innerHTML = "";
-  if (SYNC && !sync.ready) { $("tabs").hidden = true; $("foot").hidden = true; $("tripDate").textContent = ""; renderGate(main); return; }
+  if (SYNC && !sync.ready) { $("tabs").hidden = true; $("foot").hidden = true; $("tripWrap").hidden = true; renderGate(main); return; }
   const inTrip = !!state.trip;
   if (!inTrip && (ui.tab === "list" || ui.tab === "shop")) ui.tab = "list";
   const showHome = !inTrip && ui.tab === "list";
   $("tabs").hidden = !inTrip;
   $("foot").hidden = !inTrip;
-  $("tripDate").textContent = inTrip ? "Trip · " + fmtDate(state.trip.date, true) : "";
+  $("tripWrap").hidden = !inTrip;
+  if (inTrip) { $("tripDate").textContent = "Trip · " + fmtDate(state.trip.date, true); if (document.activeElement !== $("tripdate")) $("tripdate").value = state.trip.date; }
   document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab===ui.tab));
   if (showHome) renderHome(main);
   else if (ui.tab==="prices") renderPrices(main);
@@ -1644,6 +1698,8 @@ function render(){
 }
 function setTab(t){ ui.tab=t; closeEditor(); ui.confirming=null; if (t!=="prices") ui.product=null; ui.backTab = t; save(); render(); $("main").scrollTop=0; }
 document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+// tap the date at the top to change it; the date box sits invisibly over the label so the phone's own date picker opens
+$("tripdate").onchange = () => { const v = $("tripdate").value; if (v && state.trip) { state.trip.date = v; touch(); render(); } else if (state.trip) $("tripdate").value = state.trip.date; };
 $("main").addEventListener("focusout", () => setTimeout(() => { if (sync.pending && !busy()) applyRemote(); }, 0));
 startSync();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});

@@ -1,4 +1,4 @@
-const CACHE = "palengke-v13";
+const CACHE = "palengke-v14";
 const FILES = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "icon-maskable-192.png", "icon-maskable-512.png", "barcode-detector.js", "zxing_reader.wasm", "firebase-app-compat.js", "firebase-auth-compat.js", "firebase-firestore-compat.js"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener("activate", e => {
