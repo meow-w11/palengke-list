@@ -280,6 +280,67 @@ body,header,footer{transition:background-color .2s ease}
 .themebtn{width:34px;height:34px;flex:none;border-radius:999px;background:var(--soft);color:var(--fg);display:inline-flex;align-items:center;justify-content:center;padding:0}
 .themebtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .themebtn svg .fill{fill:currentColor;stroke:none}
+/* v17: plain labels, store grid, same-price button, folded cart, where-next, floating scan, receipt total, trip summary */
+.label{font-size:.98rem;text-transform:none;letter-spacing:0;color:var(--fg);font-weight:700;margin:20px 0 8px}
+.label b{font-family:var(--mono)}
+.group-h{font-size:.95rem;margin:16px 2px 2px;align-items:baseline}
+.group-h span{font-family:var(--display);font-size:.85rem}
+.storebar{display:flex;flex-wrap:wrap;gap:6px;overflow:visible;padding:4px 0 2px}
+.store{flex:1 1 auto;min-width:56px;min-height:56px;padding:8px 10px}
+.store .s-nm{font-size:.9rem;white-space:nowrap}
+.rot .k{text-transform:none;letter-spacing:0;font-size:.8rem}
+.store .s-left{font-family:var(--display);font-size:.8rem;font-weight:500}
+.item-main{grid-template-columns:34px 1fr auto}
+.box{width:30px;height:30px;border-radius:8px}
+.samebtn{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:52px;border-radius:12px;background:var(--accent);color:var(--accent-ink);padding:0 16px;font-weight:700;font-size:1rem;text-align:left}
+.samebtn .v{font-family:var(--mono);font-size:1.05rem;white-space:nowrap}
+.cartfold{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;min-height:54px;margin-top:18px;padding:0 14px;background:var(--surface);border:1px solid var(--line);border-radius:12px;text-align:left;color:var(--fg)}
+.cartfold .k{font-weight:700;font-size:1rem}
+.cartfold .n{color:var(--muted);font-size:.88rem;margin-left:6px;font-weight:500}
+.cartfold .v{font-family:var(--mono);font-weight:700;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.cartfold svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.cartfold[aria-expanded="true"] svg{transform:rotate(180deg)}
+.nextgo{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;min-height:64px;margin-top:8px;padding:10px 16px;border-radius:14px;background:var(--fg);color:var(--bg);text-align:left}
+.nextgo b{display:block;font-size:1.05rem}
+.nextgo small{display:block;font-size:.85rem;opacity:.85;margin-top:2px}
+.nextgo .go{flex:none;background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:7px 14px;font-weight:700}
+.donehead{display:flex;align-items:center;gap:12px;margin:18px 0 6px}
+.donehead .ck{width:44px;height:44px;border-radius:999px;background:var(--done);color:var(--done-ink);display:grid;place-items:center;flex:none;font-size:1.3rem;font-weight:700}
+.donehead h2{margin:0;font-size:1.3rem}
+.app{position:relative}
+.scanbtn.fab{position:absolute;right:16px;bottom:calc(var(--foot-h,96px) + 14px);z-index:40;display:flex;align-items:center;gap:8px;height:54px;padding:0 20px 0 16px;border-radius:27px;background:var(--fg);color:var(--bg);font-weight:700;font-size:1rem;box-shadow:0 6px 16px rgb(0 0 0 / .25);border:0}
+.scanbtn.fab svg{width:22px;height:22px;fill:currentColor}
+main.withfab{padding-bottom:84px}
+footer{position:relative;border-top:0;filter:drop-shadow(0 -2px 3px rgb(0 0 0 / .10))}
+footer::before{content:"";position:absolute;left:0;right:0;top:-8px;height:8px;background-image:linear-gradient(45deg,var(--surface) 50%,transparent 50%),linear-gradient(-45deg,var(--surface) 50%,transparent 50%);background-size:16px 16px;background-repeat:repeat-x}
+footer .lbl{font-size:.85rem;text-transform:none;letter-spacing:0}
+footer .tot{font-size:1.75rem;letter-spacing:-.02em}
+footer .right{font-family:var(--display);font-size:.9rem;color:var(--fg);font-weight:600}
+#bud{font-weight:500;color:var(--muted);font-size:.82rem}
+.tally{display:flex;gap:5px;justify-content:flex-end;margin-top:7px}
+.tally span{display:flex;gap:2px}
+.tally i{display:block;width:3px;height:18px;border-radius:1px;background:var(--line)}
+.tally i.on{background:var(--fg)}
+.tally:empty{display:none}
+/* trip summary */
+.rcpt{background:var(--surface);border-radius:12px 12px 0 0;padding:14px 16px 12px;margin-top:14px;position:relative;filter:drop-shadow(0 2px 4px rgb(0 0 0 / .10))}
+.rcpt::after{content:"";position:absolute;left:0;right:0;bottom:-8px;height:8px;background-image:linear-gradient(135deg,var(--surface) 50%,transparent 50%),linear-gradient(-135deg,var(--surface) 50%,transparent 50%);background-size:16px 16px;background-repeat:repeat-x}
+.rrow{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:6px 0;font-size:1rem}
+.rrow .n{color:var(--muted);font-size:.88rem;margin-left:6px}
+.rrow .v{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.rrow.tot{border-top:2px dashed var(--line);margin-top:6px;padding-top:12px}
+.rrow.tot .v{font-size:1.7rem;font-weight:700;letter-spacing:-.02em}
+.vs{text-align:right;font-size:.92rem;margin-top:2px}
+.vs b{font-family:var(--mono)}
+.vs.down b{color:var(--down)} .vs.up b{color:var(--up)}
+.sumcard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:10px}
+.sumcard h3{margin:0 0 4px;font-size:.98rem}
+.sumcard .line{font-size:.95rem;padding:3px 0}
+.sumcard .line b{font-family:var(--mono)}
+.sumcard .was{color:var(--muted)}
+.sumcard .up{color:var(--up)} .sumcard .down{color:var(--down)}
+.carry{display:flex;align-items:center;gap:10px;min-height:44px;font-weight:600;margin-top:6px}
+.carry input{width:22px;height:22px;margin:0;accent-color:var(--link)}
 </style>
 <script>try{var t=localStorage.getItem("palengke-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
@@ -298,13 +359,14 @@ body,header,footer{transition:background-color .2s ease}
   <main class="pad" id="main"></main>
   <footer class="pad" id="foot">
     <div>
-      <div class="lbl">Spent this trip</div>
+      <div class="lbl">Spent so far</div>
       <div class="tot" id="total">₱0.00</div>
     </div>
     <div>
       <div class="right" id="prog">0 of 0 items</div>
       <div class="right" id="bud"></div>
-      <div class="bar"><i id="barFill" style="width:0%"></i></div>
+      <div class="tally" id="tally" role="img"></div>
+      <div class="bar" id="barWrap"><i id="barFill" style="width:0%"></i></div>
     </div>
   </footer>
 </div>
@@ -387,7 +449,7 @@ const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); loc
 const touch = () => { save(); };
 const prod = pid => state.products.find(p=>p.id===pid);
 const storeName = id => id === "all" ? "All stores" : (state.stores.find(s=>s.id===id)?.name || "Removed store");
-const validStore = () => { if (ui.store !== "all" && !state.stores.some(s=>s.id===ui.store)) ui.store = state.stores[0]?.id || "all"; };
+const validStore = () => { if (ui.store !== "all" && !state.stores.some(s=>s.id===ui.store)) ui.store = "all"; };
 validStore();
 
 /* price history for a product, oldest → newest */
@@ -625,11 +687,11 @@ document.addEventListener("touchmove", e => { if (e.touches && e.touches.length 
 let rotTimer = null;
 
 /* ===== HOME ===== */
-function startTrip(){ if (state.sample) clearSample(); state.trip = {date:today(), items:[]}; ui.tab="list"; validStore(); save(); render(); setTimeout(()=>$("q")?.focus(),50); }
+function startTrip(){ if (state.sample) clearSample(); state.trip = {date:today(), items:[]}; ui.tab="list"; ui.store="all"; validStore(); save(); render(); setTimeout(()=>$("q")?.focus(),50); }
 function renderHome(main){
   const wrap = el(`<div class="home"></div>`);
   if (state.sample) { const n = document.createElement("div"); sampleNote(n); wrap.appendChild(n); }
-  const b = el(`<button class="start" type="button"><span>Start listing<small>Plan what to buy for this trip</small></span><span class="arrow">→</span></button>`);
+  const b = el(`<button class="start" type="button"><span>Start listing<small>Plan what to buy for this trip</small></span></button>`);
   b.onclick = startTrip;
   wrap.appendChild(b);
   const hs = el(`<button type="button" class="homescan">${BARCODE_ICON}<span><b>Scan products</b><small>Save your packaged items once by their barcode</small></span></button>`);
@@ -735,7 +797,7 @@ function renderList(main){
     const lastDate = pid => { let d = ""; state.history.forEach(h => { if (h.date > d && h.items.some(i=>i.pid===pid)) d = h.date; }); return d; };
     const bought = usual.filter(p => timesBought(p.id)).sort((a,b)=>lastDate(b.id).localeCompare(lastDate(a.id)) || timesBought(b.id)-timesBought(a.id));
     const pool = (bought.length ? bought : usual).slice(0, 12);
-    const row = el(`<div class="suggestrow"><button type="button" class="rot" aria-live="polite"><span class="rotx"><span class="k">Bought before · tap to add</span><span class="v"></span></span><span class="plus">+</span></button><button class="ghost" type="button">All saved (${usual.length})</button></div>`);
+    const row = el(`<div class="suggestrow"><button type="button" class="rot" aria-live="polite"><span class="rotx"><span class="k">Bought before, tap to add</span><span class="v"></span></span><span class="plus">+</span></button><button class="ghost" type="button">All saved (${usual.length})</button></div>`);
     const v = row.querySelector(".v");
     let i = ui.rotIdx % pool.length || 0;
     const show = () => { v.textContent = pool[i].name; };
@@ -749,7 +811,7 @@ function renderList(main){
     }, 1400);
     main.appendChild(row);
   } else if (usual.length) {
-    const ul = el(`<div class="label"><span>Saved items · tap to add</span></div>`);
+    const ul = el(`<div class="label"><span>Saved items, tap to add</span></div>`);
     const ctr = el(`<span style="display:flex;gap:14px"></span>`);
     const mb = el(`<button class="ghost" type="button" style="padding:0;font-size:.72rem;letter-spacing:0;text-transform:none">Manage</button>`); mb.onclick = openItems;
     const hb = el(`<button class="ghost" type="button" style="padding:0;font-size:.72rem;letter-spacing:0;text-transform:none">Hide</button>`); hb.onclick = () => { ui.showSaved = false; render(); };
@@ -765,14 +827,19 @@ function renderList(main){
 
   const items = sortItems(tItems());
   const budget = items.reduce((a,t)=>a + (t.est||0), 0);
-  const lab = el(`<div class="label"><span>This trip · ${items.length} item${items.length===1?"":"s"}${budget ? ` · budget <b>${esc(peso0(budget))}</b>` : ""}</span></div>`);
+  const lab = el(`<div class="label"><span>${items.length} thing${items.length===1?"":"s"} to buy${budget ? `, budget <b>${esc(peso0(budget))}</b>` : ""}</span></div>`);
   lab.appendChild(sortToggle());
   main.appendChild(lab);
   if (!items.length) main.appendChild(el(`<div class="empty">Type what you need above, or tap a saved item.</div>`));
   else {
-    main.appendChild(el(`<div class="gesture-tip">Swipe left to remove, right to edit. Press and hold for more.</div>`));
+    if (state.history.length < 3) main.appendChild(el(`<div class="gesture-tip">Swipe left to remove, right to edit. Press and hold for more.</div>`));
+    // grouped by each item's first-choice store, so you can check each place at a glance
+    const firstStore = ti => { const p = prod(ti.pid); return ((p && p.stores) || []).find(s => state.stores.some(x => x.id === s)) || null; };
+    [...state.stores.map(s => [s.id, s.name]), [null, "Any store"]].forEach(([gid, gname]) => {
+    const gi = items.filter(ti => firstStore(ti) === gid); if (!gi.length) return;
+    const gh = el(`<div class="group-h"><b></b><span>${gi.length} item${gi.length===1?"":"s"}</span></div>`); gh.querySelector("b").textContent = gname; main.appendChild(gh);
     const rows = el(`<div class="rows"></div>`);
-    items.forEach(ti => {
+    gi.forEach(ti => {
       const p = prod(ti.pid); if (!p) return;
       const lb = lastBuy(p.id);
       const r = el(`<div class="li${ti.bought?" bought":""}"><div class="li-row"><button type="button" class="li-main"><span class="nm"><span class="t">${nameHTML(p)}</span></span><span class="last"></span></button></div></div>`);
@@ -796,14 +863,10 @@ function renderList(main){
       rows.appendChild(r);
     });
     main.appendChild(rows);
+    });
   }
 
-  const sl = el(`<div class="label"><span>Stores</span></div>`);
-  const tg = el(`<button class="ghost" type="button" style="padding:0;font-size:.72rem;letter-spacing:0;text-transform:none">Edit stores</button>`);
-  tg.onclick = openStores; sl.appendChild(tg); main.appendChild(sl);
-  main.appendChild(el(`<div class="hint" style="margin-top:0">${state.stores.map(s=>esc(s.name)).join(" · ") || "No stores yet"}</div>`));
-
-  if (items.length) { const go = el(`<button class="primary" type="button" style="width:100%;margin-top:18px">Go shopping →</button>`); go.onclick = () => setTab("shop"); main.appendChild(go); }
+  if (items.length) { const go = el(`<button class="primary" type="button" style="width:100%;margin-top:18px">Go shopping</button>`); go.onclick = () => setTab("shop"); main.appendChild(go); }
   cancelTripControl(main);
 }
 const SORTS = [["added","Order added"],["az","Name, A to Z"],["hi","Price, highest first"],["lo","Price, lowest first"]];
@@ -893,7 +956,7 @@ function shopItem(ti, sid, kind){
       touch(); render(); return;
     }
     if (open) closeEditor(); else openEditor(pid, shopDraft(cur, p, sid)); render();
-    if (!open) setTimeout(()=>$(isKg(p) ? "se-kg" : "se-price")?.focus(), 0); };
+    if (!open && (isKg(p) || quick || !lastBuy(pid))) setTimeout(()=>$(isKg(p) ? "se-kg" : "se-price")?.focus(), 0); };
   if (open) card.appendChild(shopEditor(ti, p, sid, kind));
   else {
     const tap = () => card.querySelector(".item-main").click();
@@ -967,6 +1030,24 @@ function shopEditor(ti, p, sid, kind){
   paintSum();
   if (d.edit && d.pick === pid) ed.querySelector("[data-editbox]").replaceWith(productFields(d.f, "se"));
   const eb = ed.querySelector('[data-a="edit"]'); if (eb) eb.onclick = () => { d.edit = !d.edit; render(); };
+  // one tap when the price hasn't changed: "Same as last time ₱123.00"
+  if (!inCart && !lump && d.pick !== "__new") {
+    const hist = purchases(tp.id), lbs = hist.filter(x => x.store === d.store).pop() || hist[hist.length-1];
+    if (lbs) {
+      const b1now = d.tags.includes("b1g1") && !kg, b1then = (lbs.tags||[]).includes("b1g1");
+      const same = b1now ? (b1then ? (lbs.reg ?? lbs.price * 2) : null) : (b1then ? null : lbs.price);
+      if (same != null) {
+        const sb = el(`<button type="button" class="samebtn"><span></span><span class="v">${esc(peso(same))}${kg ? "/kg" : ""}</span></button>`);
+        sb.firstChild.textContent = "Same as last time" + (lbs.store !== d.store ? " at " + storeName(lbs.store) : "");
+        sb.onclick = () => {
+          d.price = String(Math.round(same * 100) / 100); price.value = d.price; price.setCustomValidity(""); paintSum();
+          if (kg && !num(d.kg)) { $("se-kg")?.focus(); return; }
+          if (ed.requestSubmit) ed.requestSubmit(); else ed.onsubmit({preventDefault(){}});
+        };
+        ed.querySelector(".pricebox").before(sb);
+      }
+    }
+  }
   ed.onsubmit = e => { e.preventDefault();
     let v = num(d.price);
     if (v == null && !lump || v != null && v < 0) { price.setCustomValidity("Enter the price on the tag."); price.reportValidity(); return; }
@@ -997,24 +1078,54 @@ function shopEditor(ti, p, sid, kind){
 }
 
 
+// stores worth a button on this trip: somewhere an item can be bought, or was bought
+const shopStores = () => state.stores.filter(s => tItems().some(t => (t.bought ? t.bought.store === s.id : canBuyAt(t, s.id))));
+function goStore(id){ ui.store = id; ui.cartOpen = false; closeEditor(); save(); render(); $("main").scrollTop = 0; }
+// a folded "In the cart" row; tap to see what's in it
+function cartFold(body, title, list, kind, sid){
+  if (!list.length) return;
+  const open = !!ui.cartOpen || !!norm(ui.shopQuery);
+  const b = el(`<button type="button" class="cartfold" aria-expanded="${open}"><span><span class="k"></span><span class="n">${list.length} item${list.length===1?"":"s"}</span></span><span class="v">${esc(peso(list.reduce((a,i)=>a+lineTotal(i),0)))}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></button>`);
+  b.querySelector(".k").textContent = title;
+  b.onclick = () => { ui.cartOpen = !open; render(); };
+  body.appendChild(b);
+  if (open) list.forEach(ti => body.appendChild(shopItem(ti, sid, kind)));
+}
+// in one store's view: what's still left at the others, with a button to go there
+function whereNext(body, sid, hereCount){
+  const opts = shopStores().filter(s => s.id !== sid).map(s => {
+    const list = hereCount ? leftAt(s.id).filter(i => !canBuyAt(i, sid)) : leftAt(s.id);
+    return {s, list};
+  }).filter(x => x.list.length);
+  if (!opts.length) return;
+  const h = el(`<div class="label"><span></span></div>`); h.firstChild.textContent = hereCount ? "Still left at other stores" : "Where to next"; body.appendChild(h);
+  opts.forEach(({s, list}) => {
+    const names = list.map(i => prod(i.pid)?.item).filter(Boolean);
+    const b = el(`<button type="button" class="nextgo"><span><b></b><small></small></span><span class="go">Go</span></button>`);
+    b.querySelector("b").textContent = s.name;
+    b.querySelector("small").textContent = `${list.length} left: ${names.slice(0, 4).join(", ")}${names.length > 4 ? ", and more" : ""}`;
+    b.onclick = () => goStore(s.id);
+    body.appendChild(b);
+  });
+}
 function renderShop(main){
   if (!tItems().length) { main.appendChild(el(`<div class="empty">Nothing on this trip yet. Add items in List first.</div>`)); return; }
   validStore();
+  if (ui.store !== "all" && !shopStores().some(s => s.id === ui.store)) ui.store = "all";
   const sid = ui.store;
   const bar = el(`<div class="storebar" role="group" aria-label="Which store are you at?"></div>`);
   const chip = (id, name, n) => {
-    const b = el(`<button type="button" class="store${n?"":" done"}" aria-pressed="${id===sid}"><span class="s-nm"></span><span class="s-left">${n ? n+" left" : "✓ done"}</span></button>`);
+    const b = el(`<button type="button" class="store${n?"":" done"}" aria-pressed="${id===sid}"><span class="s-nm"></span><span class="s-left">${n ? n+" left" : "Done"}</span></button>`);
     b.querySelector(".s-nm").textContent = name;
-    b.onclick = () => { ui.store = id; closeEditor(); save(); render(); $("main").scrollTop = 0; };
+    b.onclick = () => goStore(id);
     bar.appendChild(b);
   };
   chip("all", "All", tItems().filter(i=>!i.bought).length);
-  state.stores.forEach(s => chip(s.id, s.name, leftAt(s.id).length));
-  const add = el(`<button type="button" class="store add" aria-label="Add or edit stores">+ Store</button>`); add.onclick = openStores; bar.appendChild(add);
+  shopStores().forEach(s => chip(s.id, s.name, leftAt(s.id).length));
   main.appendChild(bar);
-  const sr = el(`<div class="searchrow qrow"><input id="shopQ" placeholder="Search this trip" aria-label="Search this trip" autocomplete="off" enterkeyhint="search"><span data-scan></span></div>`);
-  sr.querySelector("[data-scan]").replaceWith(scanButton("Scan", "", "shop"));
+  const sr = el(`<div class="searchrow"><input id="shopQ" placeholder="Search this trip" aria-label="Search this trip" autocomplete="off" enterkeyhint="search"></div>`);
   const sq = sr.querySelector("input"); sq.value = ui.shopQuery;
+  if (!(ui.editing && ui.draft?.kind === "shop")) { document.querySelector(".app").appendChild(scanButton("Scan", "fab", "shop")); main.classList.add("withfab"); }
   main.appendChild(sr);
   const lumpIds = sid === "all" ? state.stores.filter(s => s.lump && tItems().some(t => tickStore(t,"all") === s.id)).map(s=>s.id) : (isLump(sid) ? [sid] : []);
   lumpIds.forEach(id => {
@@ -1040,7 +1151,7 @@ function paintShopBody(body, sid){
   const labelRow = el(`<div class="label" style="margin-top:14px"><span></span></div>`);
   if (sid === "all") {
     const left = sortItems(tItems().filter(i => !i.bought && keep(i)));
-    labelRow.firstChild.textContent = `To buy · ${left.length}`; labelRow.appendChild(sortToggle()); body.appendChild(labelRow);
+    labelRow.firstChild.textContent = left.length ? `${left.length} left to buy` : "Nothing left to buy"; labelRow.appendChild(sortToggle()); body.appendChild(labelRow);
     if (!left.length) body.appendChild(el(`<div class="empty" style="padding:12px 8px">${v ? "No item matches your search." : "Everything is in the cart."}</div>`));
     const groups = [...state.stores.map(s => [s.id, s.name]), [null, "No store left"]];
     groups.forEach(([id, name]) => {
@@ -1049,14 +1160,16 @@ function paintShopBody(body, sid){
       g.forEach(ti => body.appendChild(shopItem(ti, "all", "here")));
     });
     const cart = byRecent(tItems().filter(i => i.bought && keep(i)));
-    if (cart.length) { head(`In cart · ${cart.length} · latest first`, peso(cart.reduce((a,i)=>a+lineTotal(i),0))); cart.forEach(ti => body.appendChild(shopItem(ti, "all", "cart-all"))); }
+    cartFold(body, "In the cart", cart, "cart-all", "all");
   } else {
     const here = sortItems(leftAt(sid).filter(keep));
-    labelRow.firstChild.textContent = `To buy at ${storeName(sid)} · ${here.length}`; labelRow.appendChild(sortToggle()); body.appendChild(labelRow);
-    if (!here.length) body.appendChild(el(`<div class="empty" style="padding:12px 8px">${v ? "No item here matches your search." : "Nothing left to buy here."}</div>`));
+    if (!here.length && !v) { const dh = el(`<div class="donehead"><span class="ck" aria-hidden="true">✓</span><h2></h2></div>`); dh.querySelector("h2").textContent = `All done at ${storeName(sid)}`; body.appendChild(dh); }
+    else { labelRow.firstChild.textContent = `${here.length} left at ${storeName(sid)}`; labelRow.appendChild(sortToggle()); body.appendChild(labelRow); }
+    if (!here.length && v) body.appendChild(el(`<div class="empty" style="padding:12px 8px">No item here matches your search.</div>`));
     here.forEach(ti => body.appendChild(shopItem(ti, sid, "here")));
     const boughtHere = byRecent(tItems().filter(i => i.bought && i.bought.store === sid && keep(i)));
-    if (boughtHere.length) { head(`In cart from ${storeName(sid)} · ${boughtHere.length} · latest first`, peso(boughtHere.reduce((a,i)=>a+lineTotal(i),0))); boughtHere.forEach(ti => body.appendChild(shopItem(ti, sid, "cart"))); }
+    if (!v) whereNext(body, sid, here.length);
+    cartFold(body, "In the cart here", boughtHere, "cart", sid);
     const others = sortItems(tItems().filter(i => !i.bought && !canBuyAt(i, sid) && keep(i)));
     if (others.length) {
       const d = el(`<details><summary>Found something from another store here? (${others.length})</summary></details>`);
@@ -1072,26 +1185,76 @@ function paintShopBody(body, sid){
   if (stranded.length) body.appendChild(el(`<div class="warnbox">No store left for: ${stranded.map(i=>esc(prod(i.pid).name)).join(", ")}. Tap the item to buy it anywhere, or add another store to it in List.</div>`));
 }
 function finishTripControl(main){
-  const wrap = el(`<div style="margin-top:22px"></div>`);
-  const got = tItems().filter(i=>i.bought), notGot = tItems().length - got.length, priced = got.filter(i=>i.bought.price != null).length;
-  const noTotal = state.stores.filter(s => s.lump && got.some(i=>i.bought.store===s.id) && state.trip.lump?.[s.id] == null).map(s=>s.name);
-  if (ui.confirming === "finish") {
-    const c = el(`<div class="card"><div class="confirm" style="margin:0">
-      <span>Finish this trip? ${priced} price${priced===1?"":"s"} will be saved to your price history.${noTotal.length ? ` You haven't entered the total paid at ${esc(noTotal.join(" and "))} yet.` : ""}${notGot?` ${notGot} item${notGot===1?"":"s"} you didn't buy will be dropped.`:""}</span>
-      <button class="primary" type="button" data-a="ok">Finish and save</button><button class="ghost" type="button" data-a="cancel">Cancel</button></div></div>`);
-    c.querySelector('[data-a="ok"]').onclick = () => {
-      refreshNow(); const got = tItems().filter(i=>i.bought);
-      const lumps = {...(state.trip.lump||{})};
-      if (got.length || Object.keys(lumps).length) state.history.push({id:uid(), date:state.trip.date, lumps, items:got.map(i=>({pid:i.pid, store:i.bought.store, price:i.bought.price ?? null, qty:qtyOf(i), tags:(i.tags||[]).slice(), reg:i.bought.reg ?? null}))});
-      state.trip = null; ui.confirming=null; ui.tab="list"; closeEditor(); touch(); render(); };
-    c.querySelector('[data-a="cancel"]').onclick = () => { ui.confirming=null; render(); };
-    wrap.appendChild(c);
-  } else {
-    const b = el(`<button class="primary" type="button" style="width:100%">Finish trip</button>`);
-    b.onclick = () => { ui.confirming="finish"; render(); $("main").scrollTop = 1e6; };
-    wrap.appendChild(b);
-  }
+  const wrap = el(`<div style="margin-top:22px;display:flex;flex-direction:column;gap:12px;align-items:flex-start"></div>`);
+  const b = el(`<button class="primary" type="button" style="width:100%">Finish trip</button>`);
+  b.onclick = () => { ui.tab = "summary"; ui.carry = true; closeEditor(); ui.confirming = null; render(); $("main").scrollTop = 0; };
+  const es = el(`<button class="ghost" type="button">Edit stores</button>`); es.onclick = openStores;
+  wrap.append(b, es);
   main.appendChild(wrap);
+}
+/* ===== TRIP SUMMARY: check it, then save ===== */
+function renderSummary(main){
+  const back = el(`<button class="back" type="button">Back to shopping</button>`);
+  back.onclick = () => { ui.tab = "shop"; render(); }; main.appendChild(back);
+  const got = tItems().filter(i => i.bought), left = tItems().filter(i => !i.bought);
+  main.appendChild(el(`<h2 style="margin:6px 0 0;font-size:1.6rem">Finish this trip</h2>`));
+  main.appendChild(el(`<div class="hint" style="margin-top:2px">${esc(new Date(state.trip.date+"T00:00:00").toLocaleDateString("en-PH",{weekday:"long",month:"long",day:"numeric"}))}</div>`));
+  // the receipt: one line per store
+  const r = el(`<div class="rcpt"></div>`);
+  const missing = [];
+  state.stores.forEach(s => {
+    const its = got.filter(i => i.bought.store === s.id), lump = state.trip.lump?.[s.id];
+    if (!its.length && lump == null) return;
+    if (s.lump && its.length && lump == null) missing.push(s.name);
+    const sum = its.reduce((a,i) => a + lineTotal(i), 0) + (lump || 0);
+    const row = el(`<div class="rrow"><span><span class="s"></span><span class="n">${its.length} item${its.length===1?"":"s"}</span></span><span class="v">${esc(peso(sum))}</span></div>`);
+    row.querySelector(".s").textContent = s.name; r.appendChild(row);
+  });
+  if (!r.children.length) r.appendChild(el(`<div class="rrow"><span class="n" style="margin:0">Nothing in the cart yet</span></div>`));
+  const total = tripTotal();
+  r.appendChild(el(`<div class="rrow tot"><b>Total</b><span class="v">${esc(peso(total))}</span></div>`));
+  const last = state.history[state.history.length - 1];
+  if (last && got.length) {
+    const d = total - histTotal(last);
+    if (Math.abs(d) >= 0.01) r.appendChild(el(`<div class="vs ${d < 0 ? "down" : "up"}"><b>${esc(peso(Math.abs(d)))}</b> ${d < 0 ? "less" : "more"} than ${esc(fmtDate(last.date))}</div>`));
+  }
+  main.appendChild(r);
+  if (missing.length) main.appendChild(el(`<div class="warnbox" style="margin-top:18px">You haven't typed the total paid at ${esc(missing.join(" and "))} yet. Go back to Shop to add it.</div>`));
+  // price changes since the last time you bought each item
+  const changes = got.filter(i => i.bought.price != null).map(i => {
+    const lb = lastBuy(i.pid); if (!lb) return null;
+    if ((lb.tags||[]).includes("b1g1") !== (i.tags||[]).includes("b1g1")) return null;
+    const d = i.bought.price - lb.price; if (Math.abs(d) < 0.005) return null;
+    return {p: prod(i.pid), now: i.bought.price, was: lb.price, d, pct: d / lb.price, kg: isKg(prod(i.pid))};
+  }).filter(x => x && x.p);
+  const card = (title, lines) => { if (!lines.length) return; const c = el(`<div class="sumcard"><h3></h3></div>`); c.querySelector("h3").textContent = title; lines.forEach(l => c.appendChild(l)); main.appendChild(c); };
+  const chLine = c => { const l = el(`<div class="line"><span class="nm"></span>, <b class="${c.d > 0 ? "up" : "down"}">${esc(peso(c.now))}${c.kg ? "/kg" : ""}</b> <span class="was">(was ${esc(peso(c.was))})</span></div>`); l.querySelector(".nm").textContent = c.p.name; return l; };
+  const sp = el(`<div style="height:8px"></div>`); main.appendChild(sp);
+  card("Went up since last time", changes.filter(c => c.d > 0).sort((a,b) => b.pct - a.pct).slice(0, 5).map(chLine));
+  card("Cheaper this time", changes.filter(c => c.d < 0).sort((a,b) => a.pct - b.pct).slice(0, 5).map(chLine));
+  card("Over budget", got.filter(i => i.est && i.bought.price != null && lineTotal(i) > i.est + 0.005).map(i => {
+    const l = el(`<div class="line"><span class="nm"></span>, <b class="up">${esc(peso(lineTotal(i)))}</b> <span class="was">(budget ${esc(peso0(i.est))})</span></div>`); l.querySelector(".nm").textContent = prod(i.pid)?.name || "Item"; return l; }));
+  if (left.length) {
+    const c = el(`<div class="sumcard"><h3></h3><div class="line was"></div><label class="carry"><input type="checkbox" id="carryNext"> Keep them on the list for next time</label></div>`);
+    c.querySelector("h3").textContent = `Not bought, ${left.length} item${left.length===1?"":"s"}`;
+    c.querySelector(".was").textContent = left.map(i => prod(i.pid)?.name).filter(Boolean).join(", ");
+    const cb = c.querySelector("input"); cb.checked = ui.carry !== false; cb.onchange = () => { ui.carry = cb.checked; };
+    main.appendChild(c);
+  }
+  const saveBtn = el(`<button class="primary" type="button" style="width:100%;margin-top:18px;min-height:54px;font-size:1.05rem">Save trip</button>`);
+  saveBtn.onclick = () => {
+    refreshNow(); if (!state.trip) { ui.tab = "list"; render(); return; }
+    const got = tItems().filter(i => i.bought), left = tItems().filter(i => !i.bought);
+    const lumps = {...(state.trip.lump || {})};
+    if (got.length || Object.keys(lumps).length) state.history.push({id:uid(), date:state.trip.date, lumps, items:got.map(i => ({pid:i.pid, store:i.bought.store, price:i.bought.price ?? null, qty:qtyOf(i), tags:(i.tags||[]).slice(), reg:i.bought.reg ?? null}))});
+    const keep = ui.carry !== false && left.length;
+    state.trip = keep ? {date:today(), lump:{}, items:left.map((t, n) => ({...t, bought:null, skip:[], tags:[], added:n + 1}))} : null;
+    ui.tab = "list"; ui.store = "all"; ui.cartOpen = false; closeEditor(); touch(); render();
+    toast(keep ? `Trip saved. ${left.length} item${left.length===1?"":"s"} kept for next time.` : "Trip saved");
+  };
+  main.appendChild(saveBtn);
+  const nb = el(`<button class="ghost" type="button" style="margin-top:12px">Back to shopping</button>`); nb.onclick = () => { ui.tab = "shop"; render(); };
+  main.appendChild(nb);
 }
 function cancelTripControl(main){
   const w = el(`<div style="margin-top:14px"></div>`);
@@ -1697,15 +1860,16 @@ function setTabColor(t){
 }
 function render(){
   const main = $("main"); const st = main.scrollTop; clearInterval(rotTimer);
+  document.querySelectorAll(".app > .fab").forEach(x => x.remove()); main.classList.remove("withfab");
   const a = document.activeElement, keep = a && a.id && main.contains(a) ? {id:a.id, s:a.selectionStart, e:a.selectionEnd} : null;
   main.innerHTML = "";
   if (SYNC && !sync.ready) { $("tabs").hidden = true; $("foot").hidden = true; $("tripWrap").hidden = true; setTabColor("list"); renderGate(main); return; }
   const inTrip = !!state.trip;
-  if (!inTrip && (ui.tab === "list" || ui.tab === "shop")) ui.tab = "list";
+  if (!inTrip && (ui.tab === "list" || ui.tab === "shop" || ui.tab === "summary")) ui.tab = "list";
   setTabColor(["shop","prices"].includes(ui.tab) && state.trip ? ui.tab : (ui.tab === "prices" ? "prices" : "list"));
   const showHome = !inTrip && ui.tab === "list";
   $("tabs").hidden = !inTrip;
-  $("foot").hidden = !inTrip;
+  $("foot").hidden = !inTrip || ui.tab === "summary";
   $("tripWrap").hidden = !inTrip;
   if (inTrip) { $("tripDate").textContent = "Trip · " + fmtDate(state.trip.date, true); if (document.activeElement !== $("tripdate")) $("tripdate").value = state.trip.date; }
   document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab===ui.tab));
@@ -1714,6 +1878,7 @@ function render(){
   else if (ui.tab==="items") renderItems(main);
   else if (ui.tab==="stores") renderStores(main);
   else if (ui.tab==="shop") renderShop(main);
+  else if (ui.tab==="summary") renderSummary(main);
   else renderList(main);
   main.scrollTop = st;
   if (keep) { const n = $(keep.id); if (n && document.activeElement !== n) { try { n.focus({preventScroll:true}); if (keep.s != null) n.setSelectionRange(keep.s, keep.e); } catch(e){} } }
@@ -1723,9 +1888,14 @@ function render(){
     const pcs = items.reduce((a,i)=>a + (isKg(prod(i.pid)) ? 1 : qtyOf(i)), 0);
     const budget = items.reduce((a,i)=>a + (i.est||0), 0);
     $("total").textContent = peso(got.reduce((a,i)=>a+lineTotal(i),0) + lumpTotal());
-    $("prog").textContent = `${got.length} of ${items.length} items` + (pcs > items.length ? ` · ${pcs} pcs` : "");
-    $("bud").textContent = budget ? `budget ${peso0(budget)}` : "";
+    $("prog").textContent = `${got.length} of ${items.length} in the cart`;
+    $("bud").textContent = budget ? `Budget ${peso0(budget)}` : "";
     $("barFill").style.width = items.length ? (got.length/items.length*100)+"%" : "0%";
+    // tally marks in groups of five (a bar instead for long lists)
+    const tl = $("tally"), useTally = items.length > 0 && items.length <= 30;
+    $("barWrap").hidden = useTally; tl.innerHTML = "";
+    if (useTally) { for (let g = 0; g < items.length; g += 5) { const grp = document.createElement("span"); for (let k = g; k < Math.min(g + 5, items.length); k++) { const m = document.createElement("i"); if (k < got.length) m.className = "on"; grp.appendChild(m); } tl.appendChild(grp); } tl.setAttribute("aria-label", $("prog").textContent); }
+    document.documentElement.style.setProperty("--foot-h", ($("foot").offsetHeight || 96) + "px");
   }
 }
 function setTab(t){ ui.tab=t; closeEditor(); ui.confirming=null; if (t!=="prices") ui.product=null; ui.backTab = t; save(); render(); $("main").scrollTop=0; }
