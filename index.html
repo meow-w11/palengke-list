@@ -87,7 +87,8 @@ button{font:inherit;cursor:pointer;border:0;color:var(--fg)}
 .tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .tag{font-size:.68rem;background:var(--soft);color:var(--muted);border-radius:6px;padding:2px 6px}
 .last{font-family:var(--mono);font-size:.72rem;color:var(--muted);text-align:right;white-space:nowrap}
-.li.bought .t,.edit{padding:0 12px 12px}
+.li.bought .t,.item.in .t{color:var(--muted);text-decoration:line-through}
+.edit{padding:0 12px 12px}
 /* shop */
 .storebar{display:flex;gap:6px;overflow-x:auto;padding:4px 0 2px;scrollbar-width:none}
 .storebar::-webkit-scrollbar{display:none}
@@ -214,6 +215,25 @@ footer .right{text-align:right;font-family:var(--mono);font-size:.78rem;color:va
 footer .lbl{white-space:nowrap}
 footer .right{white-space:nowrap}
 #bud:empty{display:none}
+/* swipe + hold */
+.sw{position:relative;overflow:hidden;touch-action:pan-y}
+.sw-bg{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 18px;font-weight:700;font-size:.85rem;pointer-events:none;opacity:0}
+.sw-bg .l,.sw-bg .r{opacity:.35;transition:opacity .1s}
+.sw-bg.go-r .l,.sw-bg.go-l .r{opacity:1}
+.sw-bg.right{background:var(--accent);color:var(--accent-ink)}
+.sw-bg.left{background:var(--danger);color:#fff}
+.sw-fg{position:relative;background:inherit;will-change:transform}
+.sw-fg.back{transition:transform .18s ease}
+@media (prefers-reduced-motion:reduce){.sw-fg.back{transition:none}}
+.sheet-bg{position:fixed;inset:0;z-index:60;background:rgb(0 0 0 / .4);display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--surface);color:var(--fg);width:100%;max-width:560px;border-radius:18px 18px 0 0;padding-block:12px calc(14px + env(safe-area-inset-bottom,0px));box-sizing:border-box}
+.sheet h3{margin:4px 0 8px;font-size:1rem}
+.sheet button.act{display:block;width:100%;text-align:left;background:none;padding:13px 4px;border-bottom:1px solid var(--line);font-size:1rem}
+.sheet button.act.danger{color:var(--danger)}
+.sheet button.act:last-child{border-bottom:0}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:70;background:var(--fg);color:var(--bg);border-radius:12px;padding:10px 14px;display:flex;gap:14px;align-items:center;font-size:.88rem;box-shadow:0 4px 16px rgb(0 0 0 / .25);max-width:calc(100% - 32px)}
+.toast button{background:none;color:var(--accent);font-weight:700;padding:0}
+.gesture-tip{font-size:.72rem;color:var(--muted);margin:6px 0 0}
 </style>
 </head>
 <body>
@@ -280,7 +300,9 @@ function fixProduct(p){
 function fixState(st){
   st.stores = st.stores || JSON.parse(JSON.stringify(DEFAULT_STORES));
   st.products = (st.products || []).map(fixProduct);
-  st.history = (st.history || []).map(h => ({...h, items:(h.items||[]).map(i => ({...i, qty:i.qty>0?i.qty:1, tags:i.tags||[]}))}));
+  st.history = (st.history || []).map(h => ({...h, lumps:h.lumps||{}, items:(h.items||[]).map(i => ({...i, price:i.price ?? null, qty:i.qty>0?i.qty:1, tags:i.tags||[]}))}));
+  st.stores = st.stores.map(s => ({id:s.id, name:s.name, lump:!!s.lump}));
+  if (st.trip) st.trip.lump = st.trip.lump || {};
   if (st.trip) st.trip.items = (st.trip.items || []).map((t,i) => ({...t, skip:t.skip||[], qty:t.qty>0?t.qty:1, tags:t.tags||[], est:t.est ?? null, added:t.added||i+1, bought:t.bought ? {...t.bought, at:t.bought.at||0} : null}));
   return st;
 }
@@ -324,18 +346,34 @@ validStore();
 /* price history for a product, oldest → newest */
 function purchases(pid){
   const out = [];
-  state.history.forEach(h => h.items.forEach(it => { if (it.pid===pid) out.push({date:h.date, store:it.store, price:it.price, qty:qtyOf(it), tags:it.tags||[], hid:h.id}); }));
+  state.history.forEach(h => h.items.forEach(it => { if (it.pid===pid && it.price != null) out.push({date:h.date, store:it.store, price:it.price, qty:qtyOf(it), tags:it.tags||[], reg:it.reg ?? null, hid:h.id}); }));
   out.sort((a,b)=>a.date.localeCompare(b.date));
   return out;
 }
 const lastBuy = pid => { const p = purchases(pid); return p[p.length-1]; };
 const timesBought = pid => state.history.reduce((n,h)=>n+(h.items.some(i=>i.pid===pid)?1:0),0);
+// a plain "any brand" version only makes sense when the item has brands; "okra" with one saved version is just that one
+const needsGeneric = item => { const sib = state.products.filter(x => norm(x.item) === norm(item)); return !sib.some(isGeneric) && (sib.length > 1 || sib.some(x => x.brand)); };
+function makeGeneric(item){
+  const sib = state.products.filter(x => norm(x.item) === norm(item));
+  const g = sib.find(isGeneric); if (g) return g;
+  if (sib.length === 1 && !sib[0].brand) return sib[0];
+  const stores = []; sib.forEach(x => x.stores.forEach(s => { if (!stores.includes(s)) stores.push(s); }));
+  const p = fixProduct({id:uid(), item:(sib[0]?.item || item).trim(), brand:"", size:"", unit:sib[0]?.unit || "pc", stores, codes:[]});
+  state.products.push(p); return p;
+}
 
 /* quantities: price is per piece (or per kg); qty is pieces (or kg) */
 const isKg = p => !!p && p.unit === "kg";
 const qtyOf = t => (t && t.qty > 0) ? t.qty : 1;
-const lineTotal = t => t.bought ? t.bought.price * qtyOf(t) : 0;
-const histTotal = h => h.items.reduce((a,i)=>a + i.price * qtyOf(i), 0);
+const lineTotal = t => t.bought && t.bought.price != null ? t.bought.price * qtyOf(t) : 0;
+const histTotal = h => h.items.reduce((a,i)=>a + (i.price != null ? i.price * qtyOf(i) : 0), 0) + Object.values(h.lumps||{}).reduce((a,v)=>a+(v||0),0);
+/* stores that are paid as one total (like the palengke): items are only ticked, the store gets one amount per trip */
+const isLump = sid => !!state.stores.find(s=>s.id===sid)?.lump;
+const lumpTotal = () => state.trip ? Object.values(state.trip.lump||{}).reduce((a,v)=>a+(v||0),0) : 0;
+/* an item with no brand and no size is the plain "any brand" version of its parent */
+const isGeneric = p => !!p && !p.brand && !p.size;
+const siblings = p => state.products.filter(x => x.id !== p.id && norm(x.item) === norm(p.item));
 const unitLbl = p => isKg(p) ? "/kg" : "";
 const qtyText = (t, p) => isKg(p) ? fmtKg(qtyOf(t)) + " kg" : "×" + qtyOf(t);
 function stepper(value, onChange, label){
@@ -353,10 +391,16 @@ const tItem = pid => tItems().find(t=>t.pid===pid);
 const options = ti => { const p = prod(ti.pid); return ((p && p.stores.length) ? p.stores : state.stores.map(s=>s.id)).filter(s => !ti.skip.includes(s) && state.stores.some(x=>x.id===s)); };
 const canBuyAt = (ti, sid) => sid === "all" || options(ti).includes(sid);
 const leftAt = sid => tItems().filter(i => !i.bought && canBuyAt(i, sid));
+// price used for sorting: what you paid, else the budget, else last price × how many; items with no price go last
+function sortPrice(t){ if (t.bought && t.bought.price != null) return lineTotal(t); if (t.est) return t.est; const lb = lastBuy(t.pid); return lb ? lb.price * qtyOf(t) : null; }
 function sortItems(arr){
-  if (ui.sort !== "az") return arr.slice().sort((a,b)=>(a.added||0)-(b.added||0));
   const key = t => { const p = prod(t.pid) || {}; return [norm(p.item), norm(p.brand), norm(p.size)].join("|"); };
-  return arr.slice().sort((a,b)=>key(a).localeCompare(key(b)));
+  if (ui.sort === "az") return arr.slice().sort((a,b)=>key(a).localeCompare(key(b)));
+  if (ui.sort === "hi" || ui.sort === "lo") {
+    const dir = ui.sort === "hi" ? -1 : 1;
+    return arr.slice().sort((a,b) => { const x = sortPrice(a), y = sortPrice(b); if (x == null && y == null) return key(a).localeCompare(key(b)); if (x == null) return 1; if (y == null) return -1; return (x - y) * dir; });
+  }
+  return arr.slice().sort((a,b)=>(a.added||0)-(b.added||0));
 }
 const byRecent = arr => arr.slice().sort((a,b)=>(b.bought?.at||0)-(a.bought?.at||0));
 const matchQ = (p, v) => !v || norm(p.name).includes(v) || norm(p.item).includes(v) || norm(p.brand).includes(v);
@@ -463,6 +507,70 @@ function statsCard(p){
 function openEditor(pid, draft){ ui.editing = pid; ui.draft = draft; ui.confirming = null; }
 function closeEditor(){ ui.editing = null; ui.draft = null; }
 
+
+/* ===== gestures: swipe a row left/right, press and hold for a menu ===== */
+function swipeable(row, fg, opts){
+  // opts: {right:{label, run}, left:{label, run}, hold:fn}
+  row.classList.add("sw"); fg.classList.add("sw-fg");
+  const bg = el(`<div class="sw-bg" aria-hidden="true"><span class="l"></span><span class="r"></span></div>`);
+  bg.querySelector(".l").textContent = opts.right ? opts.right.label : ""; bg.querySelector(".r").textContent = opts.left ? opts.left.label : "";
+  row.insertBefore(bg, fg);
+  let x0=0, y0=0, dx=0, active=false, swiping=false, held=false, timer=null, pid=null;
+  const reset = () => { fg.classList.add("back"); fg.style.transform = ""; bg.style.opacity = 0; setTimeout(()=>fg.classList.remove("back"), 200); };
+  row.addEventListener("pointerdown", e => {
+    if (e.button > 0 || e.target.closest(".stepper, input, .editor, .edit")) return;
+    active = true; swiping = false; held = false; x0 = e.clientX; y0 = e.clientY; dx = 0; pid = e.pointerId;
+    clearTimeout(timer);
+    if (opts.hold) timer = setTimeout(() => { if (active && !swiping) { held = true; try { navigator.vibrate && navigator.vibrate(30); } catch(_){} opts.hold(); } }, 480);
+  });
+  row.addEventListener("pointermove", e => {
+    if (!active || e.pointerId !== pid) return;
+    const mx = e.clientX - x0, my = e.clientY - y0;
+    if (!swiping && (Math.abs(mx) > 8 || Math.abs(my) > 8)) clearTimeout(timer);
+    if (!swiping && Math.abs(mx) > 14 && Math.abs(mx) > Math.abs(my) * 1.4 && ((mx > 0 && opts.right) || (mx < 0 && opts.left))) { swiping = true; try { row.setPointerCapture(pid); } catch(_){} }
+    if (!swiping) return;
+    dx = Math.max(opts.left ? -160 : 0, Math.min(opts.right ? 160 : 0, mx));
+    fg.style.transform = `translateX(${dx}px)`;
+    bg.style.opacity = 1; bg.className = "sw-bg " + (dx > 0 ? "right" : "left") + (Math.abs(dx) > 80 ? (dx > 0 ? " go-r" : " go-l") : "");
+  });
+  const end = () => {
+    clearTimeout(timer); if (!active) return; active = false;
+    if (swiping) { const go = Math.abs(dx) > 80 ? (dx > 0 ? opts.right : opts.left) : null; reset(); row._eatClick = true; setTimeout(()=>row._eatClick=false, 350); if (go) setTimeout(go.run, 120); }
+    else if (held) { row._eatClick = true; setTimeout(()=>row._eatClick=false, 350); }
+  };
+  row.addEventListener("pointerup", end); row.addEventListener("pointercancel", () => { clearTimeout(timer); active = false; if (swiping) reset(); });
+  row.addEventListener("click", e => { if (row._eatClick) { e.stopPropagation(); e.preventDefault(); row._eatClick = false; } }, true);
+  row.addEventListener("contextmenu", e => { if (opts.hold) e.preventDefault(); });
+}
+function sheet(title, actions){
+  const bgEl = el(`<div class="sheet-bg" role="dialog" aria-modal="true"><div class="sheet pad"><h3></h3></div></div>`);
+  bgEl.querySelector("h3").innerHTML = title;
+  const sh = bgEl.querySelector(".sheet");
+  const close = () => bgEl.remove();
+  [...actions.filter(Boolean), {label:"Cancel", run:()=>{}}].forEach(a => {
+    const b = el(`<button type="button" class="act${a.danger ? " danger" : ""}"></button>`); b.textContent = a.label;
+    b.onclick = () => { close(); a.run(); }; sh.appendChild(b);
+  });
+  bgEl.onclick = e => { if (e.target === bgEl) close(); };
+  document.body.appendChild(bgEl);
+  sh.querySelector("button")?.focus();
+}
+let toastTimer = null;
+function toast(msg, undo){
+  document.querySelector(".toast")?.remove(); clearTimeout(toastTimer);
+  const t = el(`<div class="toast" role="status"><span></span>${undo ? '<button type="button">Undo</button>' : ""}</div>`);
+  t.querySelector("span").textContent = msg;
+  if (undo) t.querySelector("button").onclick = () => { t.remove(); undo(); };
+  document.body.appendChild(t); toastTimer = setTimeout(() => t.remove(), 5000);
+}
+function removeFromTrip(pid){
+  const i = tItems().findIndex(t => t.pid === pid); if (i < 0) return;
+  const saved = JSON.parse(JSON.stringify(state.trip.items[i])), p = prod(pid);
+  state.trip.items.splice(i, 1); if (ui.editing === pid) closeEditor(); touch(); render();
+  toast(`Removed ${p ? p.name : "item"}`, () => { if (state.trip && !tItem(pid)) { state.trip.items.push(saved); touch(); render(); } });
+}
+function openChart(pid){ ui.backTab = ui.tab; ui.tab = "prices"; ui.product = pid; closeEditor(); save(); render(); $("main").scrollTop = 0; }
+
 /* ===== HOME ===== */
 function startTrip(){ if (state.sample) clearSample(); state.trip = {date:today(), items:[]}; ui.tab="list"; validStore(); save(); render(); setTimeout(()=>$("q")?.focus(),50); }
 function renderHome(main){
@@ -523,11 +631,22 @@ function renderList(main){
     let lastGroup = null;
     matches.forEach(p => {
       const g = norm(p.item);
-      if (groups[g] > 1 && g !== lastGroup) { const h = el(`<div class="sg-group"></div>`); h.textContent = `${p.item} · ${state.products.filter(x=>norm(x.item)===g).length} saved`; list.appendChild(h); }
+      if (g !== lastGroup) {
+        const all = state.products.filter(x=>norm(x.item)===g);
+        if (all.length > 1 || needsGeneric(p.item)) {
+          const h = el(`<div class="sg-group"></div>`); h.textContent = `${p.item} · ${all.length} saved`; list.appendChild(h);
+          if (needsGeneric(p.item)) {            // offer the plain version: decide the brand at the store
+            const a = el(`<button type="button" class="sg"><span class="nm"><span class="pn"><span class="it"></span></span> <span class="tag budget">any brand</span></span><span class="meta">pick brand at the store</span></button>`);
+            a.querySelector(".it").textContent = p.item;
+            a.onclick = () => addAndReset(makeGeneric(p.item), true);
+            list.appendChild(a);
+          }
+        }
+      }
       lastGroup = g;
       const lb = lastBuy(p.id), ot = tItem(p.id);
       const s = el(`<button type="button" class="sg"><span class="nm">${nameHTML(p)}</span><span class="meta"></span></button>`);
-      s.querySelector(".meta").textContent = ot ? (isKg(p) ? "on list" : `on list ×${qtyOf(ot)} · +1`) : (lb ? "last " + peso0(lb.price) + unitLbl(p) : "saved");
+      s.querySelector(".meta").textContent = ot ? (isKg(p) ? "on list" : `on list ×${qtyOf(ot)} · +1`) : (isGeneric(p) && groups[g] > 1 ? "any brand" : (lb ? "last " + peso0(lb.price) + unitLbl(p) : "saved"));
       s.onclick = () => addAndReset(p, true);
       list.appendChild(s);
     });
@@ -554,7 +673,9 @@ function renderList(main){
   q.oninput = () => { ui.query = q.value; ui.newDraft = null; paint(); };
   q.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); const v = norm(q.value); if (!v) return;
     const exact = state.products.find(p => norm(p.name) === v);
-    if (exact) addAndReset(exact, true); else { const s = sgBox.querySelector(".sg.new"); s && s.click(); } } };
+    if (exact) addAndReset(exact, true);
+    else if (state.products.some(p => norm(p.item) === v)) addAndReset(makeGeneric(q.value), true);    // "eggs" → Eggs, any brand
+    else { const s = sgBox.querySelector(".sg.new"); s && s.click(); } } };
   main.appendChild(box);
   paint();
 
@@ -582,6 +703,7 @@ function renderList(main){
   main.appendChild(lab);
   if (!items.length) main.appendChild(el(`<div class="empty">Type what you need above, or tap a saved item.</div>`));
   else {
+    main.appendChild(el(`<div class="gesture-tip">Swipe left to remove, right to edit. Press and hold for more.</div>`));
     const rows = el(`<div class="rows"></div>`);
     items.forEach(ti => {
       const p = prod(ti.pid); if (!p) return;
@@ -593,7 +715,16 @@ function renderList(main){
       r.querySelector(".last").textContent = ti.bought ? peso(lineTotal(ti)) : (lb ? "last " + peso0(lb.price) + unitLbl(p) : "");
       if (isKg(p)) r.querySelector(".li-row").appendChild(el(`<span class="kgnote">by kg</span>`));
       else r.querySelector(".li-row").appendChild(stepper(qtyOf(ti), v => { const cur = tItem(p.id); if (cur) { cur.qty = v; touch(); render(); } }, p.name));
-      r.querySelector(".li-main").onclick = () => { if (ui.editing === p.id) closeEditor(); else openEditor(p.id, {kind:"list", f:fieldsOf(p), est: ti.est ? String(ti.est) : ""}); render(); };
+      const openIt = () => { const cur = tItem(p.id); if (!cur) return; openEditor(p.id, {kind:"list", f:fieldsOf(prod(p.id)), est: cur.est ? String(cur.est) : ""}); render(); };
+      r.querySelector(".li-main").onclick = () => { if (ui.editing === p.id) { closeEditor(); render(); } else openIt(); };
+      if (ui.editing !== p.id) swipeable(r, r.querySelector(".li-row"), {
+        right: {label:"Edit", run: openIt},
+        left: {label:"Remove", run: () => removeFromTrip(p.id)},
+        hold: () => sheet(nameHTML(p), [
+          {label:"Edit item or budget", run: openIt},
+          !isKg(p) && {label:"Add one more", run: () => { const cur = tItem(p.id); if (cur) { cur.qty = Math.min(99, qtyOf(cur)+1); touch(); render(); } }},
+          purchases(p.id).length && {label:"See price chart", run: () => openChart(p.id)},
+          {label:"Remove from this trip", danger:true, run: () => removeFromTrip(p.id)}])});
       if (ui.editing === p.id && ui.draft?.kind === "list") r.appendChild(listEditor(p, ti));
       rows.appendChild(r);
     });
@@ -609,7 +740,7 @@ function renderList(main){
   cancelTripControl(main);
 }
 function sortToggle(){
-  const seg = el(`<span class="seg" role="group" aria-label="Sort"><button type="button" data-s="added">Added</button><button type="button" data-s="az">A–Z</button></span>`);
+  const seg = el(`<span class="seg" role="group" aria-label="Sort"><button type="button" data-s="added">Added</button><button type="button" data-s="az">A–Z</button><button type="button" data-s="hi" aria-label="Price, highest first">₱ ↓</button><button type="button" data-s="lo" aria-label="Price, lowest first">₱ ↑</button></span>`);
   seg.querySelectorAll("button").forEach(b => { b.setAttribute("aria-pressed", ui.sort === b.dataset.s); b.onclick = () => { ui.sort = b.dataset.s; save(); render(); }; });
   return seg;
 }
@@ -641,44 +772,81 @@ function listEditor(p, ti){
 /* ===== SHOP ===== */
 function shopDraft(ti, p, sid){
   const inCart = !!ti.bought;
-  return {kind:"shop", price: inCart ? String(ti.bought.price) : "", qty: qtyOf(ti), kg: isKg(p) ? (inCart ? fmtKg(qtyOf(ti)) : "") : "",
+  return {kind:"shop", pick:p.id, nf:{item:p.item, brand:"", size:"", unit:p.unit, stores:p.stores.slice()},
+    price: inCart && ti.bought.price != null ? String(ti.bought.price) : "", qty: qtyOf(ti), kg: isKg(p) ? (inCart ? fmtKg(qtyOf(ti)) : "") : "",
     store: inCart ? ti.bought.store : (sid === "all" ? (options(ti)[0] || state.stores[0]?.id) : sid),
-    tags: (ti.tags||[]).slice(), edit:false, f:fieldsOf(p)};
+    tags: (ti.tags||[]).slice(), reg: ti.bought?.reg != null && !(ti.tags||[]).includes("b1g1") ? String(ti.bought.reg) : "", edit:false, f:fieldsOf(p),
+    // Buy 1 Get 1 is stored as 2 pieces at half price; show it back as the shelf price for one set
+    ...((ti.tags||[]).includes("b1g1") && ti.bought && ti.bought.price != null ? {price:String(ti.bought.reg ?? ti.bought.price*2), qty:Math.max(1, Math.round(qtyOf(ti)/2))} : {})};
 }
-function tripTotal(exceptPid){ return tItems().filter(t=>t.pid!==exceptPid).reduce((a,t)=>a+lineTotal(t),0); }
+function tripTotal(exceptPid){ return tItems().filter(t=>t.pid!==exceptPid).reduce((a,t)=>a+lineTotal(t),0) + lumpTotal(); }
+// where an item gets ticked off when tapped in this view
+const tickStore = (ti, sid) => ti.bought ? ti.bought.store : (sid === "all" ? (options(ti)[0] || null) : sid);
 function shopItem(ti, sid, kind){
   const p = prod(ti.pid), pid = p.id, inCart = !!ti.bought, lb = lastBuy(pid), u = unitLbl(p);
   const open = ui.editing === pid && ui.draft?.kind === "shop";
+  const ts = tickStore(ti, sid), quick = !!ts && isLump(ts);      // pay-as-one-total store: tap just ticks
+  const inTotal = inCart && ti.bought.price == null;
   const showStep = !open && !inCart && !isKg(p);
-  const hint = ti.est ? `budget ${esc(peso0(ti.est))}` : (lb ? `last ${esc(peso0(lb.price))}${u}` : "add price");
-  const right = inCart
-    ? `${esc(peso(lineTotal(ti)))}<span class="each">${isKg(p) ? `${fmtKg(qtyOf(ti))} kg × ${esc(peso(ti.bought.price))}/kg` : (qtyOf(ti)>1 ? `${qtyOf(ti)} × ${esc(peso(ti.bought.price))}` : "")}</span>`
+  const hint = quick ? "tick when you have it" : (ti.est ? `budget ${esc(peso0(ti.est))}` : (lb ? `last ${esc(peso0(lb.price))}${u}` : "add price"));
+  const right = inTotal ? `<span class="each" style="font-size:.78rem">in ${esc(storeName(ti.bought.store))} total</span>`
+    : inCart ? `${esc(peso(lineTotal(ti)))}<span class="each">${isKg(p) ? `${fmtKg(qtyOf(ti))} kg × ${esc(peso(ti.bought.price))}/kg` : (qtyOf(ti)>1 ? `${qtyOf(ti)} × ${esc(peso(ti.bought.price))}` : "")}</span>`
     : (showStep ? "" : hint);
   const card = el(`<div class="item${inCart?" in":""}${kind==="other"?" other":""}"><div class="item-row">
     <button class="item-main" type="button">
       <span class="box">${inCart?"✓":""}</span>
       <span class="nm"><span class="t">${nameHTML(p)}</span><span class="tags"></span></span>
-      <span class="${inCart?"paid":"last"}">${right}</span>
+      <span class="${inCart && !inTotal?"paid":"last"}">${right}</span>
     </button></div></div>`);
   const tags = card.querySelector(".tags");
+  if (isGeneric(p) && siblings(p).length && !inCart) tags.appendChild(el(`<span class="tag budget">any brand</span>`));
   if (showStep) tags.appendChild(el(`<span class="tag${ti.est ? " budget" : ""}">${hint}</span>`));
   (ti.tags||[]).forEach(t => tags.appendChild(el(`<span class="tag sale">${esc(tagName(t))}</span>`)));
-  if (inCart && (sid === "all" || kind === "cart-all")) tags.appendChild(el(`<span class="tag">${esc(storeName(ti.bought.store))}</span>`));
+  if (inCart && (sid === "all" || kind === "cart-all") && !inTotal) tags.appendChild(el(`<span class="tag">${esc(storeName(ti.bought.store))}</span>`));
   if (kind === "here" && sid !== "all" && options(ti)[0] !== sid) tags.appendChild(el(`<span class="tag">backup here</span>`));
   if (inCart && ti.est) tags.appendChild(el(`<span class="tag budget">budget ${esc(peso0(ti.est))}</span>`));
+  if (inCart && ti.bought.reg && ti.bought.price != null && !(ti.tags||[]).includes("b1g1") && ti.bought.reg > ti.bought.price) tags.appendChild(el(`<span class="tag sale">saved ${esc(peso0((ti.bought.reg - ti.bought.price) * qtyOf(ti)))}</span>`));
   if (kind === "other") { if (ti.skip.includes(sid)) tags.appendChild(el(`<span class="tag">marked not available here</span>`));
     options(ti).forEach(s => { const t = el(`<span class="tag"></span>`); t.textContent = storeName(s); tags.appendChild(t); }); }
   if (showStep) card.querySelector(".item-row").appendChild(stepper(qtyOf(ti), v => { const cur = tItem(pid); if (cur) { cur.qty = v; touch(); render(); } }, p.name));
-  else if (!open && !inCart && isKg(p) && !ti.est) card.querySelector(".last").textContent = lb ? `last ${peso0(lb.price)}/kg` : "by kg";
+  else if (!open && !inCart && isKg(p) && !ti.est && !quick) card.querySelector(".last").textContent = lb ? `last ${peso0(lb.price)}/kg` : "by kg";
   if (inCart && !isKg(p) && qtyOf(ti) > 1) card.querySelector(".t").insertAdjacentHTML("afterbegin", `<span class="qx">×${qtyOf(ti)}</span>`);
-  card.querySelector(".item-main").onclick = () => { if (open) closeEditor(); else openEditor(pid, shopDraft(ti, p, sid)); render(); if (!open) setTimeout(()=>$(isKg(p) ? "se-kg" : "se-price")?.focus(), 0); };
+  card.querySelector(".item-main").onclick = () => {
+    const cur = tItem(pid); if (!cur) return;
+    if (quick && !open && (!inCart || inTotal)) {           // tick / untick, no price
+      cur.bought = inCart ? null : {store:ts, price:null, at:Date.now()}; if (!cur.bought) cur.tags = [];
+      touch(); render(); return;
+    }
+    if (open) closeEditor(); else openEditor(pid, shopDraft(cur, p, sid)); render();
+    if (!open) setTimeout(()=>$(isKg(p) ? "se-kg" : "se-price")?.focus(), 0); };
   if (open) card.appendChild(shopEditor(ti, p, sid, kind));
+  else {
+    const tap = () => card.querySelector(".item-main").click();
+    const notHere = kind === "here" && sid !== "all" && !inCart;
+    swipeable(card, card.querySelector(".item-row"), {
+      right: !inCart ? {label: quick ? "Got it" : "In cart", run: tap} : null,
+      left: inCart ? {label:"Take out", run: () => { const cur = tItem(pid); if (cur) { cur.bought = null; cur.tags = []; touch(); render(); toast(`${p.name} is back on the list`); } }}
+          : notHere ? {label:"Not here", run: () => { const cur = tItem(pid); if (cur && !cur.skip.includes(sid)) { cur.skip.push(sid); touch(); render(); toast(`${p.name} moved to its backup store`, () => { const c2 = tItem(pid); if (c2) { c2.skip = c2.skip.filter(x=>x!==sid); touch(); render(); } }); } }} : null,
+      hold: () => sheet(nameHTML(p), [
+        !inCart && {label: quick ? "Tick it off" : "Add price and put in cart", run: tap},
+        inCart && !inTotal && {label:"Change price or quantity", run: tap},
+        inCart && {label:"Take out of cart", run: () => { const cur = tItem(pid); if (cur) { cur.bought = null; cur.tags = []; touch(); render(); } }},
+        notHere && {label:"Not available here", run: () => { const cur = tItem(pid); if (cur && !cur.skip.includes(sid)) { cur.skip.push(sid); touch(); render(); } }},
+        purchases(pid).length && {label:"See price chart", run: () => openChart(pid)},
+        {label:"Remove from this trip", danger:true, run: () => removeFromTrip(pid)}])});
+  }
   return card;
 }
 function shopEditor(ti, p, sid, kind){
-  const d = ui.draft, pid = p.id, inCart = !!ti.bought, lb = lastBuy(pid), kg = isKg(p);
+  const d = ui.draft, pid = p.id, inCart = !!ti.bought;
+  // which version did you grab? (shown when the item has other brands or sizes saved, or is a plain "any brand" item)
+  const sibs = [p, ...siblings(p)].sort((a,b)=>(isGeneric(b)-isGeneric(a)) || a.name.localeCompare(b.name));
+  const showPick = sibs.length > 1 || isGeneric(p);
+  const tp = d.pick === "__new" ? d.nf : (prod(d.pick) || p);              // the version being bought
+  const kg = (tp.unit || "pc") === "kg", lb = d.pick === "__new" ? null : lastBuy(tp.id), lump = isLump(d.store);
   const ed = el(`<form class="editor" autocomplete="off">
     <div data-stats></div>
+    ${showPick ? `<div class="erow"><span class="lab">Which one did you grab?</span></div><div data-pick></div><div data-newbox></div>` : ""}
     <div class="erow"><span class="lab">Bought at</span></div><div data-store></div>
     ${kg ? `<div class="erow"><label class="lab" for="se-kg">Weight (kg)</label><input id="se-kg" class="num kgin" type="number" inputmode="decimal" min="0" step="any" placeholder="e.g. 0.5"></div>`
          : `<div class="erow"><span class="lab">How many</span><span data-step></span></div>`}
@@ -687,13 +855,21 @@ function shopEditor(ti, p, sid, kind){
     <div data-tags></div>
     <div data-editbox></div>
     <div class="actions">${inCart?'<button class="ghost danger" type="button" data-a="out">Take out of cart</button>':(kind==="here" && sid!=="all"?'<button class="ghost danger" type="button" data-a="na">Not available here</button>':'<span></span>')}
-      <span style="display:flex;gap:14px"><button class="ghost" type="button" data-a="edit">${d.edit ? "Hide item details" : "Edit item"}</button><button class="ghost" type="button" data-a="cancel">Cancel</button></span></div></form>`);
-  ed.querySelector("[data-stats]").replaceWith(statsCard(p));
-  ed.querySelector("[data-store]").replaceWith(pickRow(state.stores.map(s=>[s.id,s.name]), () => d.store, v => { d.store = v; }));
-  ed.querySelector("[data-tags]").replaceWith(pickRow(TAGS, () => d.tags, v => { const i = d.tags.indexOf(v); i>=0 ? d.tags.splice(i,1) : d.tags.push(v); }, true));
+      <span style="display:flex;gap:14px">${d.pick === pid ? `<button class="ghost" type="button" data-a="edit">${d.edit ? "Hide item details" : "Edit item"}</button>` : ""}<button class="ghost" type="button" data-a="cancel">Cancel</button></span></div></form>`);
+  ed.querySelector("[data-stats]").replaceWith(d.pick === "__new" ? el(`<div class="stats none">New version. Its price history starts with this purchase.</div>`) : statsCard(tp));
+  if (showPick) {
+    ed.querySelector("[data-pick]").replaceWith(pickRow([...sibs.map(x => [x.id, isGeneric(x) ? `${x.item} (no brand)` : displayName(x)]), ["__new", "Another brand…"]], () => d.pick, v => { d.pick = v; d.edit = false; render(); }));
+    if (d.pick === "__new") ed.querySelector("[data-newbox]").replaceWith(productFields(d.nf, "sn"));
+  }
+  ed.querySelector("[data-store]").replaceWith(pickRow(state.stores.map(s=>[s.id,s.name]), () => d.store, v => { d.store = v; render(); }));
+  ed.querySelector("[data-tags]").replaceWith(pickRow(TAGS, () => d.tags, v => { const i = d.tags.indexOf(v); i>=0 ? d.tags.splice(i,1) : d.tags.push(v); render(); }, true));
+  const b1 = d.tags.includes("b1g1") && !kg, sale = d.tags.includes("sale");
+  if (sale && !b1) { const r = el(`<div class="erow"><label class="lab" for="se-reg">Regular price (optional)</label><input id="se-reg" class="num kgin" type="number" inputmode="decimal" min="0" step="any" placeholder="₱ normal"></div>`);
+    const ri = r.querySelector("input"); ri.value = d.reg || ""; ri.oninput = () => { d.reg = ri.value; paintSum(); }; ed.querySelector(".actions").before(r); }
+  if (b1) ed.querySelector(".actions").before(el(`<div class="hint" style="margin:0">Buy 1 Get 1: type the shelf price for one. The app records 2 pieces at half price each, so your price history stays fair.</div>`));
   const price = ed.querySelector("#se-price"), sum = ed.querySelector("[data-sum]");
-  price.placeholder = (kg ? "Price per kg" : (d.qty > 1 ? "Price each" : "Price")) + (lb ? ` (last ${peso0(lb.price)})` : ", ₱");
-  price.value = d.price;
+  const ph = () => (lump ? "Price (optional, part of the store total)" : (kg ? "Price per kg" : (d.qty > 1 ? "Price each" : "Price")) + (lb ? ` (last ${peso0(lb.price)})` : ", ₱"));
+  price.placeholder = ph(); price.value = d.price;
   const qtyNow = () => kg ? num(d.kg) : d.qty;
   const paintSum = () => {
     const v = num(d.price), q = qtyNow();
@@ -701,35 +877,50 @@ function shopEditor(ti, p, sid, kind){
     if (v != null && q) {
       const line = v * q;
       html = kg ? `${esc(fmtKg(q))} kg × ${esc(peso(v))}/kg = <b>${esc(peso(line))}</b>` : (q > 1 ? `${q} × ${esc(peso(v))} = <b>${esc(peso(line))}</b>` : `<b>${esc(peso(line))}</b>`);
+      if (d.tags.includes("b1g1") && !kg) html += ` · you take home ${q*2}`;
+      const reg = num(d.reg); if (d.tags.includes("sale") && !d.tags.includes("b1g1") && reg && reg > v) html += ` · <span class="under">saved ${esc(peso0((reg - v) * q))}</span>`;
       if (ti.est) { const diff = ti.est - line; html += diff >= 0 ? ` · <span class="under">${esc(peso0(diff))} under budget</span>` : ` · <span class="over">${esc(peso0(-diff))} over budget</span>`; }
       $("total").textContent = peso(tripTotal(pid) + line);     // live trip total while typing
     } else if (kg && ti.est && v) {
       html = `Budget ${esc(peso0(ti.est))} buys about ${esc(fmtKg(ti.est / v))} kg`;
-    }
+    } else if (lump) html = `Leave the price empty to count it in the ${esc(storeName(d.store))} total.`;
     sum.innerHTML = html;
   };
   price.oninput = () => { d.price = price.value; price.setCustomValidity(""); paintSum(); };
   if (kg) { const k = ed.querySelector("#se-kg"); k.value = d.kg; k.oninput = () => { d.kg = k.value; k.setCustomValidity(""); paintSum(); }; }
-  else ed.querySelector("[data-step]").replaceWith(stepper(d.qty, v => { d.qty = v; price.placeholder = (v > 1 ? "Price each" : "Price") + (lb ? ` (last ${peso0(lb.price)})` : ", ₱"); paintSum(); }, p.name));
+  else ed.querySelector("[data-step]").replaceWith(stepper(d.qty, v => { d.qty = v; price.placeholder = ph(); paintSum(); }, p.name));
   paintSum();
-  if (d.edit) ed.querySelector("[data-editbox]").replaceWith(productFields(d.f, "se"));
-  ed.querySelector('[data-a="edit"]').onclick = () => { d.edit = !d.edit; render(); };
+  if (d.edit && d.pick === pid) ed.querySelector("[data-editbox]").replaceWith(productFields(d.f, "se"));
+  const eb = ed.querySelector('[data-a="edit"]'); if (eb) eb.onclick = () => { d.edit = !d.edit; render(); };
   ed.onsubmit = e => { e.preventDefault();
-    const v = num(d.price);
-    if (v == null || v < 0) { price.setCustomValidity("Enter the price on the tag."); price.reportValidity(); return; }
+    let v = num(d.price);
+    if (v == null && !lump || v != null && v < 0) { price.setCustomValidity("Enter the price on the tag."); price.reportValidity(); return; }
     let q = d.qty;
-    if (kg) { q = num(d.kg); if (!q || q <= 0) { const k = $("se-kg"); k.setCustomValidity("Enter the weight in kg, like 0.5."); k.reportValidity(); return; } }
-    if (d.edit && !checkFields(d.f, "se", pid)) return;
-    const ct = tItem(pid), cp = prod(pid); if (!ct || !cp) { closeEditor(); render(); return; }
-    if (d.edit) applyFields(cp, d.f);
+    if (kg) { q = num(d.kg); if ((!q || q <= 0) && !(lump && v == null)) { const k = $("se-kg"); k.setCustomValidity("Enter the weight in kg, like 0.5."); k.reportValidity(); return; } if (!q || q <= 0) q = 1; }
+    if (d.pick === "__new" && !checkFields(d.nf, "sn")) return;
+    if (d.edit && d.pick === pid && !checkFields(d.f, "se", pid)) return;
+    let ct = tItem(pid); if (!ct || !prod(pid)) { closeEditor(); render(); return; }
+    let target = d.pick === "__new" ? null : prod(d.pick);
+    if (d.pick === "__new") { target = applyFields({id:uid(), codes:[]}, d.nf); state.products.push(target); }
+    if (!target) { closeEditor(); render(); return; }
+    if (d.edit && target.id === pid) applyFields(target, d.f);
+    if (target.id !== pid) {                                   // swap the planned item for the version you actually grabbed
+      const ex = tItem(target.id);
+      state.trip.items = state.trip.items.filter(t => t.pid !== pid);
+      if (ex) { if (ex.bought && ex.bought.price === v) q += qtyOf(ex); ct = ex; ct.est = ct.est ?? ti.est; }
+      else { ct = {...ct, pid:target.id}; state.trip.items.push(ct); }
+    }
+    let reg = d.tags.includes("sale") ? num(d.reg) : null;
+    if (d.tags.includes("b1g1") && !kg && v != null) { reg = v; v = Math.round(v / 2 * 10000) / 10000; q = q * 2; }
     ct.qty = q; ct.tags = d.tags.slice();
-    ct.bought = {store: d.store || sid, price: v, at: ct.bought?.at || Date.now()};
+    ct.bought = {store: d.store || sid, price: v, at: ct.bought?.at || Date.now(), reg: reg ?? null};
     closeEditor(); touch(); render(); };
   ed.querySelector('[data-a="cancel"]').onclick = () => { closeEditor(); render(); };
   const na = ed.querySelector('[data-a="na"]'); if (na) na.onclick = () => { const ct = tItem(pid); if (ct && !ct.skip.includes(sid)) ct.skip.push(sid); closeEditor(); touch(); render(); };
   const out = ed.querySelector('[data-a="out"]'); if (out) out.onclick = () => { const ct = tItem(pid); if (ct) { ct.bought = null; ct.tags = []; } closeEditor(); touch(); render(); };
   return ed;
 }
+
 
 function renderShop(main){
   if (!tItems().length) { main.appendChild(el(`<div class="empty">Nothing on this trip yet. Add items in List first.</div>`)); return; }
@@ -750,6 +941,17 @@ function renderShop(main){
   sr.querySelector("[data-scan]").replaceWith(scanButton("Scan", "", "shop"));
   const sq = sr.querySelector("input"); sq.value = ui.shopQuery;
   main.appendChild(sr);
+  const lumpIds = sid === "all" ? state.stores.filter(s => s.lump && tItems().some(t => tickStore(t,"all") === s.id)).map(s=>s.id) : (isLump(sid) ? [sid] : []);
+  lumpIds.forEach(id => {
+    const n = tItems().filter(t => t.bought && t.bought.store === id).length;
+    const c = el(`<div class="card"><div class="erow"><label class="lab" for="lump-${id}"></label><input id="lump-${id}" class="num kgin" type="number" inputmode="decimal" min="0" step="any" placeholder="₱ total" style="max-width:140px"></div>
+      <div class="hint" style="margin-top:4px">Tick items as you get them. Type what you paid in total when you're done. ${n} ticked here.</div></div>`);
+    c.querySelector("label").textContent = `Total paid at ${storeName(id)}`;
+    const inp = c.querySelector("input"); const cur = state.trip.lump?.[id]; inp.value = cur != null ? cur : "";
+    inp.oninput = () => { const v = num(inp.value); state.trip.lump = state.trip.lump || {}; if (v == null) delete state.trip.lump[id]; else state.trip.lump[id] = v; $("total").textContent = peso(tripTotal()); };
+    inp.onchange = () => { touch(); render(); };
+    main.appendChild(c);
+  });
   const body = el(`<div></div>`); main.appendChild(body);
   sq.oninput = () => { ui.shopQuery = sq.value; paintShopBody(body, sid); };
   paintShopBody(body, sid);
@@ -796,14 +998,16 @@ function paintShopBody(body, sid){
 }
 function finishTripControl(main){
   const wrap = el(`<div style="margin-top:22px"></div>`);
-  const got = tItems().filter(i=>i.bought), notGot = tItems().length - got.length;
+  const got = tItems().filter(i=>i.bought), notGot = tItems().length - got.length, priced = got.filter(i=>i.bought.price != null).length;
+  const noTotal = state.stores.filter(s => s.lump && got.some(i=>i.bought.store===s.id) && state.trip.lump?.[s.id] == null).map(s=>s.name);
   if (ui.confirming === "finish") {
     const c = el(`<div class="card"><div class="confirm" style="margin:0">
-      <span>Finish this trip? ${got.length} price${got.length===1?"":"s"} will be saved to your price history.${notGot?` ${notGot} item${notGot===1?"":"s"} you didn't buy will be dropped.`:""}</span>
+      <span>Finish this trip? ${priced} price${priced===1?"":"s"} will be saved to your price history.${noTotal.length ? ` You haven't entered the total paid at ${esc(noTotal.join(" and "))} yet.` : ""}${notGot?` ${notGot} item${notGot===1?"":"s"} you didn't buy will be dropped.`:""}</span>
       <button class="primary" type="button" data-a="ok">Finish and save</button><button class="ghost" type="button" data-a="cancel">Cancel</button></div></div>`);
     c.querySelector('[data-a="ok"]').onclick = () => {
       refreshNow(); const got = tItems().filter(i=>i.bought);
-      if (got.length) state.history.push({id:uid(), date:state.trip.date, items:got.map(i=>({pid:i.pid, store:i.bought.store, price:i.bought.price, qty:qtyOf(i), tags:(i.tags||[]).slice()}))});
+      const lumps = {...(state.trip.lump||{})};
+      if (got.length || Object.keys(lumps).length) state.history.push({id:uid(), date:state.trip.date, lumps, items:got.map(i=>({pid:i.pid, store:i.bought.store, price:i.bought.price ?? null, qty:qtyOf(i), tags:(i.tags||[]).slice(), reg:i.bought.reg ?? null}))});
       state.trip = null; ui.confirming=null; ui.tab="list"; closeEditor(); touch(); render(); };
     c.querySelector('[data-a="cancel"]').onclick = () => { ui.confirming=null; render(); };
     wrap.appendChild(c);
@@ -866,7 +1070,7 @@ function renderPrices(main){
   main.appendChild(el(`<div class="label"><span>Spent per trip</span><span>${trips.length} trip${trips.length===1?"":"s"}</span></div>`));
   const tc = el(`<div class="card" style="margin-top:0"><div class="readout" id="tripRead"></div></div>`);
   const pts = trips.slice(-12).map(t => ({label:fmtDate(t.date), value:histTotal(t), t}));
-  const pickTrip = i => { const p = pts[i]; tc.querySelector("#tripRead").innerHTML = `${esc(fmtDate(p.t.date,true))} <span>·</span> ${esc(peso(p.value))} <span>· ${p.t.items.length} item${p.t.items.length===1?"":"s"}</span>`;
+  const pickTrip = i => { const p = pts[i]; tc.querySelector("#tripRead").innerHTML = `${esc(fmtDate(p.t.date,true))} <span>·</span> ${esc(peso(p.value))} <span>· ${p.t.items.length} item${p.t.items.length===1?"":"s"}${Object.entries(p.t.lumps||{}).map(([s,v]) => ` · ${esc(storeName(s))} ${esc(peso0(v))}`).join("")}</span>`;
     const old = tc.querySelector("div:not(.readout)"); const nw = barChart(pts, pickTrip, i); old ? old.replaceWith(nw) : tc.appendChild(nw); };
   tc.appendChild(barChart(pts, pickTrip, pts.length-1)); main.appendChild(tc); pickTrip(pts.length-1);
   main.appendChild(el(`<div class="hint">Trip totals depend on what you bought each time. For inflation, check each item below.</div>`));
@@ -895,7 +1099,7 @@ function renderProduct(main, p){
   if (!buys.length) { main.appendChild(el(`<div class="empty">No prices saved for this item yet.</div>`)); return; }
   const pts = buys.slice(-16).map(x => ({label:fmtDate(x.date), value:x.price, x, mark:(x.tags||[]).length>0}));
   const card = el(`<div class="card"><div class="readout"></div></div>`);
-  const pick = i => { const x = pts[i].x; card.querySelector(".readout").innerHTML = `${esc(fmtDate(x.date,true))} <span>·</span> ${esc(peso(x.price))}${u} <span>at ${esc(storeName(x.store))}${(x.tags||[]).length ? " · " + esc(x.tags.map(tagName).join(", ")) : ""}</span>`;
+  const pick = i => { const x = pts[i].x; card.querySelector(".readout").innerHTML = `${esc(fmtDate(x.date,true))} <span>·</span> ${esc(peso(x.price))}${u} <span>at ${esc(storeName(x.store))}${(x.tags||[]).length ? " · " + esc(x.tags.map(tagName).join(", ")) : ""}${x.reg && !(x.tags||[]).includes("b1g1") ? " · regular " + esc(peso0(x.reg)) : ""}</span>`;
     const old = card.querySelector("div:not(.readout)"); const nw = barChart(pts, pick, i); old ? old.replaceWith(nw) : card.appendChild(nw); };
   card.appendChild(barChart(pts, pick, pts.length-1)); main.appendChild(card); pick(pts.length-1);
   main.appendChild(el(`<div class="hint">${isKg(p) ? "Prices are per kg. " : ""}Tap a bar to see the date and store.${pts.some(x=>x.mark) ? " Yellow bars were bought on sale or Buy 1 Get 1." : ""}</div>`));
@@ -1052,6 +1256,10 @@ function knownProduct(p){
   openPriceFor(p);
 }
 function openPriceFor(p){
+  if (!tItem(p.id)) {        // scanned a brand while the list only says "any brand": that's the one you grabbed
+    const g = tItems().find(t => !t.bought && (x => x && x.id !== p.id && isGeneric(x) && norm(x.item) === norm(p.item))(prod(t.pid)));
+    if (g) g.pid = p.id;
+  }
   addToTrip(p);
   const ti = tItem(p.id);
   if (ti && !ti.bought && !canBuyAt(ti, ui.store)) ui.store = "all";
@@ -1127,11 +1335,11 @@ const FB_CONFIG = {
 const SYNC = !!(window.firebase && firebase.initializeApp);
 const sync = {status: SYNC ? "starting" : "off", user:null, auth:null, db:null, unsubs:[], ready:false, synced:null, r:null, pending:false, err:"", online:navigator.onLine};
 const NORM = {
-  meta: m => ({stores:(m.stores||[]).map(s=>({id:s.id, name:s.name})), trip: m.trip ? {date:m.trip.date} : null}),
+  meta: m => ({stores:(m.stores||[]).map(s=>({id:s.id, name:s.name, lump:!!s.lump})), trip: m.trip ? {date:m.trip.date, lump:m.trip.lump||{}} : null}),
   product: p => { const x = fixProduct({item:p.item, name:p.name, brand:p.brand, size:p.size, unit:p.unit, stores:p.stores, codes:p.codes});
     return {name:x.name, item:x.item, brand:x.brand, size:x.size, unit:x.unit, stores:x.stores, codes:x.codes}; },
-  history: h => ({date:h.date, items:(h.items||[]).map(i=>({pid:i.pid, store:i.store, price:i.price, qty:qtyOf(i), tags:i.tags||[]}))}),
-  trip: t => ({skip:t.skip||[], bought: t.bought ? {store:t.bought.store, price:t.bought.price, at:t.bought.at||0} : null, added:t.added||0, qty:qtyOf(t), est:t.est ?? null, tags:t.tags||[]})
+  history: h => ({date:h.date, lumps:h.lumps||{}, items:(h.items||[]).map(i=>({pid:i.pid, store:i.store, price:i.price ?? null, qty:qtyOf(i), tags:i.tags||[], reg:i.reg ?? null}))}),
+  trip: t => ({skip:t.skip||[], bought: t.bought ? {store:t.bought.store, price:t.bought.price ?? null, at:t.bought.at||0, reg:t.bought.reg ?? null} : null, added:t.added||0, qty:qtyOf(t), est:t.est ?? null, tags:t.tags||[]})
 };
 const J = x => JSON.stringify(x);
 function localDocs(st){
@@ -1168,13 +1376,15 @@ function stateFromRemote(r){
     products: Object.entries(r.products).map(([id,d]) => ({id, ...NORM.product(d)})).sort((a,b)=>a.name.localeCompare(b.name)),
     history: Object.entries(r.history).map(([id,d]) => ({id, ...NORM.history(d)})).sort((a,b)=>a.date.localeCompare(b.date) || a.id.localeCompare(b.id)),
     trip: null};
-  if (r.meta && r.meta.trip) st.trip = {date:r.meta.trip.date, items:Object.entries(r.tripItems).map(([pid,d]) => ({pid, ...NORM.trip(d)})).filter(t => st.products.some(p=>p.id===t.pid)).sort((a,b)=>a.added-b.added)};
+  if (r.meta && r.meta.trip) st.trip = {date:r.meta.trip.date, lump:{...(r.meta.trip.lump||{})}, items:Object.entries(r.tripItems).map(([pid,d]) => ({pid, ...NORM.trip(d)})).filter(t => st.products.some(p=>p.id===t.pid)).sort((a,b)=>a.added-b.added)};
   return st;
 }
 // hold partner updates only while someone is typing (open editors keep their drafts, so a redraw doesn't lose anything)
 let lastTyped = 0, holdTimer = null;
 addEventListener("input", () => { lastTyped = Date.now(); }, true);
-addEventListener("click", () => { lastTyped = 0; }, true);     // a tap means typing is done
+addEventListener("click", () => { lastTyped = 0; refreshNow(); }, true);     // a tap means typing is done; act on the latest shared list
+addEventListener("keydown", e => { if (e.key === "Enter") refreshNow(); }, true);
+addEventListener("change", () => refreshNow(), true);
 const busy = () => { const a = document.activeElement; return !!(scan || (a && a.tagName === "INPUT" && a.type !== "date" && $("main").contains(a) && Date.now() - lastTyped < 4000)); };
 function refreshNow(){ if (SYNC && sync.ready && sync.pending) { sync.pending = false; state = stateFromRemote(sync.r); sync.synced = remoteDocs(sync.r); } }
 function applyRemote(){
@@ -1196,7 +1406,7 @@ function mergeLocalInto(local){
     (lp.codes||[]).forEach(c => { if (!p.codes.includes(c)) p.codes.push(c); });
     map[lp.id] = p.id;
   });
-  local.history.forEach(h => state.history.push({id:uid(), date:h.date, items:h.items.filter(i=>map[i.pid]).map(i=>({...i, pid:map[i.pid]}))}));
+  local.history.forEach(h => state.history.push({id:uid(), date:h.date, lumps:h.lumps||{}, items:h.items.filter(i=>map[i.pid]).map(i=>({...i, pid:map[i.pid]}))}));
   state.history = state.history.filter(h=>h.items.length).sort((a,b)=>a.date.localeCompare(b.date));
 }
 function firstLoad(fromCache){
@@ -1370,7 +1580,7 @@ function openStores(){ ui.backTab = ["list","shop"].includes(ui.tab) ? ui.tab : 
 function renderStores(main){
   backButton(main);
   main.appendChild(el(`<h2 style="margin:6px 0 2px;font-size:1.2rem">Stores</h2>`));
-  main.appendChild(el(`<div class="hint" style="margin-top:0">Rename a store any time. The new name shows up for both of you.</div>`));
+  main.appendChild(el(`<div class="hint" style="margin-top:0">Rename a store any time. The new name shows up for both of you. Choose <b>Pay as one total</b> for places like the palengke: you just tick items there and type what you paid in total.</div>`));
   const box = el(`<div class="card"></div>`);
   state.stores.forEach(s => {
     const used = state.products.filter(p => p.stores.includes(s.id)).length;
@@ -1379,6 +1589,8 @@ function renderStores(main){
     inp.onchange = () => { const v = inp.value.trim(); const cur = state.stores.find(x=>x.id===s.id); if (v && cur) { cur.name = v; touch(); render(); } else inp.value = s.name; };
     r.querySelector("button").onclick = () => { ui.confirming = "store:" + s.id; render(); };
     box.appendChild(r);
+    const lt = pickRow([["item","Price each item"],["lump","Pay as one total"]], () => s.lump ? "lump" : "item", v => { const cur = state.stores.find(x=>x.id===s.id); if (cur) { cur.lump = v === "lump"; touch(); render(); } });
+    lt.style.margin = "6px 0 10px"; box.appendChild(lt);
     if (ui.confirming === "store:" + s.id) {
       const c = el(`<div class="warnbox"><div></div><div class="form-foot"><button class="ghost" type="button" data-a="no">Keep it</button><button class="primary" type="button" data-a="yes" style="background:var(--danger);color:#fff">Remove store</button></div></div>`);
       c.firstChild.textContent = `Remove ${s.name}?` + (used ? ` ${used} saved item${used===1?"":"s"} list it as a place to buy. They'll keep their other stores.` : "") + " Past prices stay in your history.";
@@ -1424,7 +1636,7 @@ function render(){
     const items = tItems(), got = items.filter(i=>i.bought);
     const pcs = items.reduce((a,i)=>a + (isKg(prod(i.pid)) ? 1 : qtyOf(i)), 0);
     const budget = items.reduce((a,i)=>a + (i.est||0), 0);
-    $("total").textContent = peso(got.reduce((a,i)=>a+lineTotal(i),0));
+    $("total").textContent = peso(got.reduce((a,i)=>a+lineTotal(i),0) + lumpTotal());
     $("prog").textContent = `${got.length} of ${items.length} items` + (pcs > items.length ? ` · ${pcs} pcs` : "");
     $("bud").textContent = budget ? `budget ${peso0(budget)}` : "";
     $("barFill").style.width = items.length ? (got.length/items.length*100)+"%" : "0%";
