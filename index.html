@@ -258,7 +258,23 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
 .tripdate input{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer;font-size:16px}
 .tripdate input::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
 .rotx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
-.rot .plus{font-size:1.3rem;line-height:1;padding:0 4px}
+.rot .plus{font-size:1.3rem;line-height:1;padding:0 4px}/* each tab has its own colors: List lime, Shop yellow, Prices teal. The done tick stays lime on every tab. */
+:root{--done:#8ad11f; --done-ink:#10250a}
+body[data-tab="shop"]{--bg:#fdf8e6; --surface:#fffef8; --soft:#fbf0c6; --line:#ecdfb0; --grid:#f3e9c4; --accent:#ffcf1f; --accent-ink:#2a2205; --link:#7a5200; --muted:#6f6650}
+body[data-tab="prices"]{--bg:#eaf5f6; --surface:#fcffff; --soft:#d4edf0; --line:#c5e0e4; --grid:#dcecef; --accent:#0f97a8; --accent-ink:#ffffff; --link:#0a6f7c; --muted:#506b6f}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){--done:#9be33a; --done-ink:#0d1d05}
+  :root:not([data-theme="light"]) body[data-tab="shop"]{--bg:#1b190b; --surface:#28240f; --soft:#3a3313; --line:#4a411b; --grid:#332d12; --accent:#ffd43b; --accent-ink:#1b190b; --link:#ffd43b; --muted:#b3a878}
+  :root:not([data-theme="light"]) body[data-tab="prices"]{--bg:#08191d; --surface:#0f2a31; --soft:#123c44; --line:#1d4b54; --grid:#163a41; --accent:#33c6d6; --accent-ink:#06232a; --link:#6fdbe6; --muted:#8db3b8}
+}
+:root[data-theme="dark"]{--done:#9be33a; --done-ink:#0d1d05}
+:root[data-theme="dark"] body[data-tab="shop"]{--bg:#1b190b; --surface:#28240f; --soft:#3a3313; --line:#4a411b; --grid:#332d12; --accent:#ffd43b; --accent-ink:#1b190b; --link:#ffd43b; --muted:#b3a878}
+:root[data-theme="dark"] body[data-tab="prices"]{--bg:#08191d; --surface:#0f2a31; --soft:#123c44; --line:#1d4b54; --grid:#163a41; --accent:#33c6d6; --accent-ink:#06232a; --link:#6fdbe6; --muted:#8db3b8}
+.item.in .box{background:var(--done);border-color:var(--done);color:var(--done-ink)}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);box-shadow:none}
+body,header,footer{transition:background-color .2s ease}
+@media (prefers-reduced-motion:reduce){body,header,footer{transition:none}}
+
 </style>
 </head>
 <body>
@@ -1664,13 +1680,23 @@ function renderStores(main){
 }
 
 /* ===== shell ===== */
+/* tab colors: the page and the phone's status bar follow the open tab */
+const TAB_BAR = {list:["#8ad11f","#0b1b20"], shop:["#ffcf1f","#1b190b"], prices:["#0f97a8","#08191d"]};
+function setTabColor(t){
+  if (document.body.dataset.tab === t) return;
+  document.body.dataset.tab = t;
+  const m = document.querySelectorAll('meta[name="theme-color"]');
+  if (m[0]) m[0].setAttribute("content", TAB_BAR[t][0]);
+  if (m[1]) m[1].setAttribute("content", TAB_BAR[t][1]);
+}
 function render(){
   const main = $("main"); const st = main.scrollTop; clearInterval(rotTimer);
   const a = document.activeElement, keep = a && a.id && main.contains(a) ? {id:a.id, s:a.selectionStart, e:a.selectionEnd} : null;
   main.innerHTML = "";
-  if (SYNC && !sync.ready) { $("tabs").hidden = true; $("foot").hidden = true; $("tripWrap").hidden = true; renderGate(main); return; }
+  if (SYNC && !sync.ready) { $("tabs").hidden = true; $("foot").hidden = true; $("tripWrap").hidden = true; setTabColor("list"); renderGate(main); return; }
   const inTrip = !!state.trip;
   if (!inTrip && (ui.tab === "list" || ui.tab === "shop")) ui.tab = "list";
+  setTabColor(["shop","prices"].includes(ui.tab) && state.trip ? ui.tab : (ui.tab === "prices" ? "prices" : "list"));
   const showHome = !inTrip && ui.tab === "list";
   $("tabs").hidden = !inTrip;
   $("foot").hidden = !inTrip;
