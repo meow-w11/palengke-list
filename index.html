@@ -827,7 +827,7 @@ function renderList(main){
 
   const items = sortItems(tItems());
   const budget = items.reduce((a,t)=>a + (t.est||0), 0);
-  const lab = el(`<div class="label"><span>${items.length} thing${items.length===1?"":"s"} to buy${budget ? `, budget <b>${esc(peso0(budget))}</b>` : ""}</span></div>`);
+  const lab = el(`<div class="label"><span>${items.length} thing${items.length===1?"":"s"} to buy</span></div>`);
   lab.appendChild(sortToggle());
   main.appendChild(lab);
   if (!items.length) main.appendChild(el(`<div class="empty">Type what you need above, or tap a saved item.</div>`));
@@ -844,7 +844,7 @@ function renderList(main){
       const lb = lastBuy(p.id);
       const r = el(`<div class="li${ti.bought?" bought":""}"><div class="li-row"><button type="button" class="li-main"><span class="nm"><span class="t">${nameHTML(p)}</span></span><span class="last"></span></button></div></div>`);
       const tags = storeTags(p);
-      if (ti.est) tags.appendChild(el(`<span class="tag budget">budget ${esc(peso0(ti.est))}</span>`));
+      if (ti.est) tags.appendChild(el(`<span class="tag budget">${esc(peso0(ti.est))} worth</span>`));
       r.querySelector(".nm").appendChild(tags);
       r.querySelector(".last").textContent = ti.bought ? peso(lineTotal(ti)) : (lb ? "last " + peso0(lb.price) + unitLbl(p) : "");
       if (isKg(p)) { if (!ti.bought) r.querySelector(".li-row").appendChild(el(`<span class="kgnote">by kg</span>`)); }
@@ -855,7 +855,7 @@ function renderList(main){
         right: {label:"Edit", run: openIt},
         left: {label:"Remove", run: () => removeFromTrip(p.id)},
         hold: () => sheet(nameHTML(p), [
-          {label:"Edit item or budget", run: openIt},
+          {label:"Edit item or amount", run: openIt},
           !isKg(p) && {label:"Add one more", run: () => { const cur = tItem(p.id); if (cur) { cur.qty = Math.min(99, qtyOf(cur)+1); touch(); render(); } }},
           purchases(p.id).length && {label:"See price chart", run: () => openChart(p.id)},
           {label:"Remove from this trip", danger:true, run: () => removeFromTrip(p.id)}])});
@@ -887,8 +887,8 @@ function listEditor(p, ti){
   const ed = el(`<form class="edit" autocomplete="off" style="display:flex;flex-direction:column;gap:8px">
     <div data-stats></div>
     <div data-f></div>
-    <div><div class="hint" style="margin:0 0 4px">Budget for this trip (optional). For example, ground pork worth ₱200.</div>
-      <input id="le-est" class="num" type="number" inputmode="decimal" min="0" step="any" placeholder="₱ budget" style="text-align:left"></div>
+    <div><div class="hint" style="margin:0 0 4px">Buying a set amount? (optional) For example, ₱200 worth of giniling.</div>
+      <input id="le-est" class="num" type="number" inputmode="decimal" min="0" step="any" placeholder="₱ worth" style="text-align:left"></div>
     <div data-codes></div>
     <div class="form-foot" style="margin-top:0"><button class="ghost danger" type="button" data-a="rm">Remove from this trip</button>
       <span style="display:flex;gap:12px;align-items:center"><button class="ghost" type="button" data-a="cancel">Cancel</button><button class="primary" type="submit">Save</button></span></div>
@@ -926,7 +926,7 @@ function shopItem(ti, sid, kind){
   const ts = tickStore(ti, sid), quick = !!ts && isLump(ts);      // pay-as-one-total store: tap just ticks
   const inTotal = inCart && ti.bought.price == null;
   const showStep = !open && !inCart && !isKg(p);
-  const hint = quick ? "tick when you have it" : (ti.est ? `budget ${esc(peso0(ti.est))}` : (lb ? `last ${esc(peso0(lb.price))}${u}` : "add price"));
+  const hint = quick ? "tick when you have it" : (ti.est ? `${esc(peso0(ti.est))} worth` : (lb ? `last ${esc(peso0(lb.price))}${u}` : "add price"));
   const right = inTotal ? `<span class="each" style="font-size:.78rem">in ${esc(storeName(ti.bought.store))} total</span>`
     : inCart ? `${esc(peso(lineTotal(ti)))}<span class="each">${isKg(p) ? `${fmtKg(qtyOf(ti))} kg × ${esc(peso(ti.bought.price))}/kg` : (qtyOf(ti)>1 ? `${qtyOf(ti)} × ${esc(peso(ti.bought.price))}` : "")}</span>`
     : (showStep ? "" : hint);
@@ -942,7 +942,7 @@ function shopItem(ti, sid, kind){
   (ti.tags||[]).forEach(t => tags.appendChild(el(`<span class="tag sale">${esc(tagName(t))}</span>`)));
   if (inCart && (sid === "all" || kind === "cart-all") && !inTotal) tags.appendChild(el(`<span class="tag">${esc(storeName(ti.bought.store))}</span>`));
   if (kind === "here" && sid !== "all" && options(ti)[0] !== sid) tags.appendChild(el(`<span class="tag">backup here</span>`));
-  if (inCart && ti.est) tags.appendChild(el(`<span class="tag budget">budget ${esc(peso0(ti.est))}</span>`));
+  if (inCart && ti.est) tags.appendChild(el(`<span class="tag budget">${esc(peso0(ti.est))} worth</span>`));
   if (inCart && ti.bought.reg && ti.bought.price != null && !(ti.tags||[]).includes("b1g1") && ti.bought.reg > ti.bought.price) tags.appendChild(el(`<span class="tag sale">saved ${esc(peso0((ti.bought.reg - ti.bought.price) * qtyOf(ti)))}</span>`));
   if (kind === "other") { if (ti.skip.includes(sid)) tags.appendChild(el(`<span class="tag">marked not available here</span>`));
     options(ti).forEach(s => { const t = el(`<span class="tag"></span>`); t.textContent = storeName(s); tags.appendChild(t); }); }
@@ -1017,10 +1017,10 @@ function shopEditor(ti, p, sid, kind){
       html = kg ? `${esc(fmtKg(q))} kg × ${esc(peso(v))}/kg = <b>${esc(peso(line))}</b>` : (q > 1 ? `${q} × ${esc(peso(v))} = <b>${esc(peso(line))}</b>` : `<b>${esc(peso(line))}</b>`);
       if (d.tags.includes("b1g1") && !kg) html += ` · you take home ${q*2}`;
       const reg = num(d.reg); if (d.tags.includes("sale") && !d.tags.includes("b1g1") && reg && reg > v) html += ` · <span class="under">saved ${esc(peso0((reg - v) * q))}</span>`;
-      if (ti.est) { const diff = ti.est - line; html += diff >= 0 ? ` · <span class="under">${esc(peso0(diff))} under budget</span>` : ` · <span class="over">${esc(peso0(-diff))} over budget</span>`; }
+      if (ti.est) { const diff = ti.est - line; html += diff >= 0 ? ` · <span class="under">${esc(peso0(diff))} less than planned</span>` : ` · <span class="over">${esc(peso0(-diff))} more than planned</span>`; }
       $("total").textContent = peso(tripTotal(pid) + line);     // live trip total while typing
     } else if (kg && ti.est && v) {
-      html = `Budget ${esc(peso0(ti.est))} buys about ${esc(fmtKg(ti.est / v))} kg`;
+      html = `${esc(peso0(ti.est))} worth is about ${esc(fmtKg(ti.est / v))} kg`;
     } else if (lump) html = `Leave the price empty to count it in the ${esc(storeName(d.store))} total.`;
     sum.innerHTML = html;
   };
@@ -1232,8 +1232,8 @@ function renderSummary(main){
   const sp = el(`<div style="height:8px"></div>`); main.appendChild(sp);
   card("Went up since last time", changes.filter(c => c.d > 0).sort((a,b) => b.pct - a.pct).slice(0, 5).map(chLine));
   card("Cheaper this time", changes.filter(c => c.d < 0).sort((a,b) => a.pct - b.pct).slice(0, 5).map(chLine));
-  card("Over budget", got.filter(i => i.est && i.bought.price != null && lineTotal(i) > i.est + 0.005).map(i => {
-    const l = el(`<div class="line"><span class="nm"></span>, <b class="up">${esc(peso(lineTotal(i)))}</b> <span class="was">(budget ${esc(peso0(i.est))})</span></div>`); l.querySelector(".nm").textContent = prod(i.pid)?.name || "Item"; return l; }));
+  card("More than planned", got.filter(i => i.est && i.bought.price != null && lineTotal(i) > i.est + 0.005).map(i => {
+    const l = el(`<div class="line"><span class="nm"></span>, <b class="up">${esc(peso(lineTotal(i)))}</b> <span class="was">(planned ${esc(peso0(i.est))} worth)</span></div>`); l.querySelector(".nm").textContent = prod(i.pid)?.name || "Item"; return l; }));
   if (left.length) {
     const c = el(`<div class="sumcard"><h3></h3><div class="line was"></div><label class="carry"><input type="checkbox" id="carryNext"> Keep them on the list for next time</label></div>`);
     c.querySelector("h3").textContent = `Not bought, ${left.length} item${left.length===1?"":"s"}`;
@@ -1889,7 +1889,7 @@ function render(){
     const budget = items.reduce((a,i)=>a + (i.est||0), 0);
     $("total").textContent = peso(got.reduce((a,i)=>a+lineTotal(i),0) + lumpTotal());
     $("prog").textContent = `${got.length} of ${items.length} in the cart`;
-    $("bud").textContent = budget ? `Budget ${peso0(budget)}` : "";
+    $("bud").textContent = "";
     $("barFill").style.width = items.length ? (got.length/items.length*100)+"%" : "0%";
     // tally marks in groups of five (a bar instead for long lists)
     const tl = $("tally"), useTally = items.length > 0 && items.length <= 30;
