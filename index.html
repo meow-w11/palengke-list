@@ -341,6 +341,10 @@ footer .right{font-family:var(--display);font-size:.9rem;color:var(--fg);font-we
 .sumcard .up{color:var(--up)} .sumcard .down{color:var(--down)}
 .carry{display:flex;align-items:center;gap:10px;min-height:44px;font-weight:600;margin-top:6px}
 .carry input{width:22px;height:22px;margin:0;accent-color:var(--link)}
+.tripbud{display:flex;align-items:center;gap:6px;margin:-2px 0 6px;font-size:.9rem;color:var(--muted)}
+.tripbud .peso{margin-left:auto;font-family:var(--mono);color:var(--fg)}
+.tripbud input{width:110px;padding:6px 10px;font-family:var(--mono);font-size:15px}
+#bud.over{color:var(--up);font-weight:700}
 </style>
 <script>try{var t=localStorage.getItem("palengke-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
@@ -830,6 +834,10 @@ function renderList(main){
   const lab = el(`<div class="label"><span>${items.length} thing${items.length===1?"":"s"} to buy</span></div>`);
   lab.appendChild(sortToggle());
   main.appendChild(lab);
+  const tb = el(`<label class="tripbud"><span>Trip budget</span><span class="peso">₱</span><input id="tripBudget" type="number" inputmode="decimal" min="0" step="any" placeholder="none" aria-label="Budget for the whole trip"></label>`);
+  const tbi = tb.querySelector("input"); tbi.value = state.trip.budget ?? "";
+  tbi.onchange = () => { const v = num(tbi.value); state.trip.budget = v && v > 0 ? v : null; touch(); render(); };
+  main.appendChild(tb);
   if (!items.length) main.appendChild(el(`<div class="empty">Type what you need above, or tap a saved item.</div>`));
   else {
     if (state.history.length < 3) main.appendChild(el(`<div class="gesture-tip">Swipe left to remove, right to edit. Press and hold for more.</div>`));
@@ -926,7 +934,7 @@ function shopItem(ti, sid, kind){
   const ts = tickStore(ti, sid), quick = !!ts && isLump(ts);      // pay-as-one-total store: tap just ticks
   const inTotal = inCart && ti.bought.price == null;
   const showStep = !open && !inCart && !isKg(p);
-  const hint = quick ? "tick when you have it" : (ti.est ? `${esc(peso0(ti.est))} worth` : (lb ? `last ${esc(peso0(lb.price))}${u}` : "add price"));
+  const hint = ti.est ? `${esc(peso0(ti.est))} worth` : quick ? "tick when you have it" : (lb ? `last ${esc(peso0(lb.price))}${u}` : "add price");
   const right = inTotal ? `<span class="each" style="font-size:.78rem">in ${esc(storeName(ti.bought.store))} total</span>`
     : inCart ? `${esc(peso(lineTotal(ti)))}<span class="each">${isKg(p) ? `${fmtKg(qtyOf(ti))} kg × ${esc(peso(ti.bought.price))}/kg` : (qtyOf(ti)>1 ? `${qtyOf(ti)} × ${esc(peso(ti.bought.price))}` : "")}</span>`
     : (showStep ? "" : hint);
@@ -1213,6 +1221,8 @@ function renderSummary(main){
   if (!r.children.length) r.appendChild(el(`<div class="rrow"><span class="n" style="margin:0">Nothing in the cart yet</span></div>`));
   const total = tripTotal();
   r.appendChild(el(`<div class="rrow tot"><b>Total</b><span class="v">${esc(peso(total))}</span></div>`));
+  const tbud = state.trip.budget;
+  if (tbud) r.appendChild(el(`<div class="vs ${total > tbud ? "up" : "down"}"><b>${esc(peso(Math.abs(tbud - total)))}</b> ${total > tbud ? "over" : "under"} your ${esc(peso0(tbud))} budget</div>`));
   const last = state.history[state.history.length - 1];
   if (last && got.length) {
     const d = total - histTotal(last);
@@ -1248,7 +1258,7 @@ function renderSummary(main){
     const lumps = {...(state.trip.lump || {})};
     if (got.length || Object.keys(lumps).length) state.history.push({id:uid(), date:state.trip.date, lumps, items:got.map(i => ({pid:i.pid, store:i.bought.store, price:i.bought.price ?? null, qty:qtyOf(i), tags:(i.tags||[]).slice(), reg:i.bought.reg ?? null}))});
     const keep = ui.carry !== false && left.length;
-    state.trip = keep ? {date:today(), lump:{}, items:left.map((t, n) => ({...t, bought:null, skip:[], tags:[], added:n + 1}))} : null;
+    state.trip = keep ? {date:today(), lump:{}, budget:state.trip.budget ?? null, items:left.map((t, n) => ({...t, bought:null, skip:[], tags:[], added:n + 1}))} : null;
     ui.tab = "list"; ui.store = "all"; ui.cartOpen = false; closeEditor(); touch(); render();
     toast(keep ? `Trip saved. ${left.length} item${left.length===1?"":"s"} kept for next time.` : "Trip saved");
   };
@@ -1573,7 +1583,7 @@ const FB_CONFIG = {
 const SYNC = !!(window.firebase && firebase.initializeApp);
 const sync = {status: SYNC ? "starting" : "off", user:null, auth:null, db:null, unsubs:[], ready:false, synced:null, r:null, pending:false, err:"", online:navigator.onLine};
 const NORM = {
-  meta: m => ({stores:(m.stores||[]).map(s=>({id:s.id, name:s.name, lump:!!s.lump})), trip: m.trip ? {date:m.trip.date, lump:m.trip.lump||{}} : null}),
+  meta: m => ({stores:(m.stores||[]).map(s=>({id:s.id, name:s.name, lump:!!s.lump})), trip: m.trip ? {date:m.trip.date, lump:m.trip.lump||{}, budget:m.trip.budget ?? null} : null}),
   product: p => { const x = fixProduct({item:p.item, name:p.name, brand:p.brand, size:p.size, unit:p.unit, stores:p.stores, codes:p.codes});
     return {name:x.name, item:x.item, brand:x.brand, size:x.size, unit:x.unit, stores:x.stores, codes:x.codes}; },
   history: h => ({date:h.date, lumps:h.lumps||{}, items:(h.items||[]).map(i=>({pid:i.pid, store:i.store, price:i.price ?? null, qty:qtyOf(i), tags:i.tags||[], reg:i.reg ?? null}))}),
@@ -1614,7 +1624,7 @@ function stateFromRemote(r){
     products: Object.entries(r.products).map(([id,d]) => ({id, ...NORM.product(d)})).sort((a,b)=>a.name.localeCompare(b.name)),
     history: Object.entries(r.history).map(([id,d]) => ({id, ...NORM.history(d)})).sort((a,b)=>a.date.localeCompare(b.date) || a.id.localeCompare(b.id)),
     trip: null};
-  if (r.meta && r.meta.trip) st.trip = {date:r.meta.trip.date, lump:{...(r.meta.trip.lump||{})}, items:Object.entries(r.tripItems).map(([pid,d]) => ({pid, ...NORM.trip(d)})).filter(t => st.products.some(p=>p.id===t.pid)).sort((a,b)=>a.added-b.added)};
+  if (r.meta && r.meta.trip) st.trip = {date:r.meta.trip.date, lump:{...(r.meta.trip.lump||{})}, budget:r.meta.trip.budget ?? null, items:Object.entries(r.tripItems).map(([pid,d]) => ({pid, ...NORM.trip(d)})).filter(t => st.products.some(p=>p.id===t.pid)).sort((a,b)=>a.added-b.added)};
   return st;
 }
 // hold partner updates only while someone is typing (open editors keep their drafts, so a redraw doesn't lose anything)
@@ -1889,7 +1899,9 @@ function render(){
     const budget = items.reduce((a,i)=>a + (i.est||0), 0);
     $("total").textContent = peso(got.reduce((a,i)=>a+lineTotal(i),0) + lumpTotal());
     $("prog").textContent = `${got.length} of ${items.length} in the cart`;
-    $("bud").textContent = "";
+    const tbud = state.trip.budget, spent = got.reduce((a,i)=>a+lineTotal(i),0) + lumpTotal();
+    $("bud").className = tbud && spent > tbud ? "over" : "";
+    $("bud").textContent = tbud ? (spent > tbud ? `${peso0(spent - tbud)} over the ${peso0(tbud)} budget` : `${peso0(tbud - spent)} left of ${peso0(tbud)}`) : "";
     $("barFill").style.width = items.length ? (got.length/items.length*100)+"%" : "0%";
     // tally marks in groups of five (a bar instead for long lists)
     const tl = $("tally"), useTally = items.length > 0 && items.length <= 30;
