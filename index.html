@@ -231,7 +231,7 @@ footer .right{white-space:nowrap}
 .sheet button.act{display:block;width:100%;text-align:left;background:none;padding:13px 4px;border-bottom:1px solid var(--line);font-size:1rem}
 .sheet button.act.danger{color:var(--danger)}
 .sheet button.act:last-child{border-bottom:0}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:70;background:var(--fg);color:var(--bg);border-radius:12px;padding:10px 14px;display:flex;gap:14px;align-items:center;font-size:.88rem;box-shadow:0 4px 16px rgb(0 0 0 / .25);max-width:calc(100% - 32px)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--foot-h, 84px) + 80px);z-index:70;background:var(--fg);color:var(--bg);border-radius:12px;padding:10px 14px;display:flex;gap:14px;align-items:center;font-size:.88rem;box-shadow:0 4px 16px rgb(0 0 0 / .25);max-width:calc(100% - 32px)}
 .toast button{background:none;color:var(--accent);font-weight:700;padding:0}
 .gesture-tip{font-size:.72rem;color:var(--muted);margin:6px 0 0}
 /* app feel: no text highlight on press-and-hold, no double-tap zoom; typing boxes stay selectable */
@@ -345,6 +345,22 @@ footer .right{font-family:var(--display);font-size:.9rem;color:var(--fg);font-we
 .tripbud .peso{margin-left:auto;font-family:var(--mono);color:var(--fg)}
 .tripbud input{width:110px;padding:6px 10px;font-family:var(--mono);font-size:15px}
 #bud.over{color:var(--up);font-weight:700}
+/* v21: tick feedback */
+:root{--done-soft:#dff5b8}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--done-soft:#2b4a16}}
+:root[data-theme="dark"]{--done-soft:#2b4a16}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .toast button{color:var(--bg);text-decoration:underline}}
+:root[data-theme="dark"] .toast button{color:var(--bg);text-decoration:underline}
+.item.in .box{font-size:1.2rem;font-weight:800}
+.toast{width:max-content;max-width:calc(100% - 32px)}
+.item.tickfx{background:var(--done-soft);border-color:var(--done);max-height:160px;animation:tickgo .35s ease-in var(--fx-left, 700ms) forwards}
+.item.tickfx.fresh .box{animation:tickpop .45s cubic-bezier(.3,1.6,.5,1)}
+.item.tickfx .t .it{text-decoration:line-through;text-decoration-thickness:2px}
+@keyframes tickpop{0%{transform:scale(.5)}60%{transform:scale(1.35)}100%{transform:scale(1)}}
+@keyframes tickgo{to{max-height:0;opacity:0;margin-top:0;transform:translateY(20px)}}
+.cartfold .n.bump{display:inline-block;animation:cartbump .45s}
+@keyframes cartbump{40%{transform:scale(1.35);color:var(--link)}}
+@media (prefers-reduced-motion:reduce){.item.tickfx,.item.tickfx.fresh .box,.cartfold .n.bump{animation-duration:.01s}}
 </style>
 <script>try{var t=localStorage.getItem("palengke-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
@@ -928,6 +944,17 @@ function shopDraft(ti, p, sid){
     // Buy 1 Get 1 is stored as 2 pieces at half price; show it back as the shelf price for one set
     ...((ti.tags||[]).includes("b1g1") && ti.bought && ti.bought.price != null ? {price:String(ti.bought.reg ?? ti.bought.price*2), qty:Math.max(1, Math.round(qtyOf(ti)/2))} : {})};
 }
+/* tick feedback: the row turns green with a big check for a moment, then slides into the cart */
+const TICK_MS = 1050;
+const leavingNow = ti => !!(ti && ti.bought && ui.leaving && ui.leaving.pid === ti.pid && Date.now() - ui.leaving.at < TICK_MS + 400);
+function markTicked(pid, wasPrev){
+  const p = prod(pid);
+  ui.leaving = {pid, at: Date.now()}; ui.bumpAt = Date.now() + TICK_MS;
+  try { navigator.vibrate && navigator.vibrate(35); } catch(e){}
+  const c0 = tItem(pid), plainName = c0 && c0.bought && isLump(c0.bought.store);
+  toast(`${p ? (plainName ? p.item : p.name) : "Item"} is in the cart`, () => { const c = tItem(pid); if (c) { c.bought = wasPrev ? wasPrev.bought : null; c.tags = wasPrev ? wasPrev.tags : []; ui.leaving = null; touch(); render(); } });
+  setTimeout(() => { if (ui.leaving && ui.leaving.pid === pid) { ui.leaving = null; if (ui.tab === "shop") render(); } }, TICK_MS);
+}
 function tripTotal(exceptPid){ return tItems().filter(t=>t.pid!==exceptPid).reduce((a,t)=>a+lineTotal(t),0) + lumpTotal(); }
 // where an item gets ticked off when tapped in this view
 const tickStore = (ti, sid) => ti.bought ? ti.bought.store : (sid === "all" ? (options(ti)[0] || null) : sid);
@@ -941,7 +968,8 @@ function shopItem(ti, sid, kind){
   const right = inTotal ? `<span class="each" style="font-size:.78rem">in ${esc(storeName(ti.bought.store))} total</span>`
     : inCart ? `${esc(peso(lineTotal(ti)))}<span class="each">${isKg(p) ? `${fmtKg(qtyOf(ti))} kg × ${esc(peso(ti.bought.price))}/kg` : (qtyOf(ti)>1 ? `${qtyOf(ti)} × ${esc(peso(ti.bought.price))}` : "")}</span>`
     : (showStep ? "" : hint);
-  const card = el(`<div class="item${inCart?" in":""}${kind==="other"?" other":""}"><div class="item-row">
+  const leaving = leavingNow(ti);
+  const card = el(`<div class="item${inCart?" in":""}${kind==="other"?" other":""}${leaving?" tickfx":""}${leaving && Date.now() - ui.leaving.at < 150 ? " fresh" : ""}"><div class="item-row">
     <button class="item-main" type="button">
       <span class="box">${inCart?"✓":""}</span>
       <span class="nm"><span class="t">${nameHTML(p, quick)}</span><span class="tags"></span></span>
@@ -964,11 +992,13 @@ function shopItem(ti, sid, kind){
     const cur = tItem(pid); if (!cur) return;
     if (quick && !open && (!inCart || inTotal)) {           // tick / untick, no price
       cur.bought = inCart ? null : {store:ts, price:null, at:Date.now()}; if (!cur.bought) cur.tags = [];
+      if (cur.bought) markTicked(pid, null);
       touch(); render(); return;
     }
     if (open) closeEditor(); else openEditor(pid, shopDraft(cur, p, sid)); render();
     if (!open && (isKg(p) || quick || !lastBuy(pid))) setTimeout(()=>$(isKg(p) ? "se-kg" : "se-price")?.focus(), 0); };
   if (open) card.appendChild(shopEditor(ti, p, sid, kind));
+  else if (leaving) { card.style.setProperty("--fx-left", Math.max(0, TICK_MS - 350 - (Date.now() - ui.leaving.at)) + "ms"); }
   else {
     const tap = () => card.querySelector(".item-main").click();
     const notHere = kind === "here" && sid !== "all" && !inCart;
@@ -1080,7 +1110,9 @@ function shopEditor(ti, p, sid, kind){
     let reg = d.tags.includes("sale") ? num(d.reg) : null;
     if (d.tags.includes("b1g1") && !kg && v != null) { reg = v; v = Math.round(v / 2 * 10000) / 10000; q = q * 2; }
     ct.qty = q; ct.tags = d.tags.slice();
+    const wasIn = !!ct.bought;
     ct.bought = {store: d.store || sid, price: v, at: ct.bought?.at || Date.now(), reg: reg ?? null};
+    if (!wasIn) markTicked(ct.pid, null);
     closeEditor(); touch(); render(); };
   ed.querySelector('[data-a="cancel"]').onclick = () => { closeEditor(); render(); };
   const na = ed.querySelector('[data-a="na"]'); if (na) na.onclick = () => { const ct = tItem(pid); if (ct && !ct.skip.includes(sid)) ct.skip.push(sid); closeEditor(); touch(); render(); };
@@ -1098,6 +1130,7 @@ function cartFold(body, title, list, kind, sid){
   const open = !!ui.cartOpen || !!norm(ui.shopQuery);
   const b = el(`<button type="button" class="cartfold" aria-expanded="${open}"><span><span class="k"></span><span class="n">${list.length} item${list.length===1?"":"s"}</span></span><span class="v">${esc(peso(list.reduce((a,i)=>a+lineTotal(i),0)))}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></button>`);
   b.querySelector(".k").textContent = title;
+  if (ui.bumpAt && Date.now() - ui.bumpAt < 600 && Date.now() >= ui.bumpAt - 50) b.querySelector(".n").classList.add("bump");
   b.onclick = () => { ui.cartOpen = !open; render(); };
   body.appendChild(b);
   if (open) list.forEach(ti => body.appendChild(shopItem(ti, sid, kind)));
@@ -1161,24 +1194,27 @@ function paintShopBody(body, sid){
   const head = (txt, right) => { const h = el(`<div class="label"><span></span></div>`); h.firstChild.textContent = txt; if (right) h.appendChild(el(`<b>${esc(right)}</b>`)); body.appendChild(h); };
   const labelRow = el(`<div class="label" style="margin-top:14px"><span></span></div>`);
   if (sid === "all") {
-    const left = sortItems(tItems().filter(i => !i.bought && keep(i)));
+    const shown = sortItems(tItems().filter(i => (!i.bought || leavingNow(i)) && keep(i))), left = shown.filter(i => !i.bought);
     labelRow.firstChild.textContent = left.length ? `${left.length} left to buy` : "Nothing left to buy"; labelRow.appendChild(sortToggle()); body.appendChild(labelRow);
-    if (!left.length) body.appendChild(el(`<div class="empty" style="padding:12px 8px">${v ? "No item matches your search." : "Everything is in the cart."}</div>`));
+    if (!shown.length) body.appendChild(el(`<div class="empty" style="padding:12px 8px">${v ? "No item matches your search." : "Everything is in the cart."}</div>`));
     const groups = [...state.stores.map(s => [s.id, s.name]), [null, "No store left"]];
     groups.forEach(([id, name]) => {
-      const g = left.filter(i => (options(i)[0] || null) === id); if (!g.length) return;
-      const h = el(`<div class="group-h"><b></b><span>${g.length}</span></div>`); h.querySelector("b").textContent = name; body.appendChild(h);
+      const g = shown.filter(i => (options(i)[0] || null) === id); if (!g.length) return;
+      const gl = g.filter(i => !i.bought).length;
+      const h = el(`<div class="group-h"><b></b><span>${gl || "✓"}</span></div>`); h.querySelector("b").textContent = name; body.appendChild(h);
       g.forEach(ti => body.appendChild(shopItem(ti, "all", "here")));
     });
-    const cart = byRecent(tItems().filter(i => i.bought && keep(i)));
+    const cart = byRecent(tItems().filter(i => i.bought && !leavingNow(i) && keep(i)));
     cartFold(body, "In the cart", cart, "cart-all", "all");
   } else {
     const here = sortItems(leftAt(sid).filter(keep));
-    if (!here.length && !v) { const dh = el(`<div class="donehead"><span class="ck" aria-hidden="true">✓</span><h2></h2></div>`); dh.querySelector("h2").textContent = `All done at ${storeName(sid)}`; body.appendChild(dh); }
-    else { labelRow.firstChild.textContent = `${here.length} left at ${storeName(sid)}`; labelRow.appendChild(sortToggle()); body.appendChild(labelRow); }
+    const lv = tItems().find(i => leavingNow(i) && i.bought.store === sid && keep(i));
+    const shownHere = lv ? sortItems(here.concat([lv])) : here;
+    if (!shownHere.length && !v) { const dh = el(`<div class="donehead"><span class="ck" aria-hidden="true">✓</span><h2></h2></div>`); dh.querySelector("h2").textContent = `All done at ${storeName(sid)}`; body.appendChild(dh); }
+    else { labelRow.firstChild.textContent = here.length ? `${here.length} left at ${storeName(sid)}` : `All done at ${storeName(sid)}`; labelRow.appendChild(sortToggle()); body.appendChild(labelRow); }
     if (!here.length && v) body.appendChild(el(`<div class="empty" style="padding:12px 8px">No item here matches your search.</div>`));
-    here.forEach(ti => body.appendChild(shopItem(ti, sid, "here")));
-    const boughtHere = byRecent(tItems().filter(i => i.bought && i.bought.store === sid && keep(i)));
+    shownHere.forEach(ti => body.appendChild(shopItem(ti, sid, "here")));
+    const boughtHere = byRecent(tItems().filter(i => i.bought && i.bought.store === sid && !leavingNow(i) && keep(i)));
     if (!v) whereNext(body, sid, here.length);
     cartFold(body, "In the cart here", boughtHere, "cart", sid);
     const others = sortItems(tItems().filter(i => !i.bought && !canBuyAt(i, sid) && keep(i)));
