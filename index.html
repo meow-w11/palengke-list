@@ -531,9 +531,9 @@ function sampleNote(main){
 
 /* ===== shared pieces ===== */
 function brandIdx(b){ let h = 0; for (const c of norm(b)) h = (h*31 + c.charCodeAt(0)) >>> 0; return h % 5; }
-function nameHTML(p){
+function nameHTML(p, plain){
   if (!p) return "";
-  return `<span class="pn">${p.brand ? `<span class="brand b${brandIdx(p.brand)}">${esc(p.brand)}</span> ` : ""}<span class="it">${esc(p.item || p.name)}</span>${p.size ? ` <span class="sz">${esc(p.size)}</span>` : ""}${isKg(p) ? ` <span class="sz">per kg</span>` : ""}</span>`;
+  return `<span class="pn">${p.brand ? `<span class="brand b${brandIdx(p.brand)}">${esc(p.brand)}</span> ` : ""}<span class="it">${esc(p.item || p.name)}</span>${p.size && !plain ? ` <span class="sz">${esc(p.size)}</span>` : ""}${isKg(p) && !plain ? ` <span class="sz">per kg</span>` : ""}</span>`;
 }
 function chipRow(selected, onToggle){
   const row = el(`<div class="chips"></div>`);
@@ -850,12 +850,15 @@ function renderList(main){
     gi.forEach(ti => {
       const p = prod(ti.pid); if (!p) return;
       const lb = lastBuy(p.id);
-      const r = el(`<div class="li${ti.bought?" bought":""}"><div class="li-row"><button type="button" class="li-main"><span class="nm"><span class="t">${nameHTML(p)}</span></span><span class="last"></span></button></div></div>`);
+      const plain = isLump(firstStore(ti));     // palengke: just the name and a tick
+      const r = el(`<div class="li${ti.bought?" bought":""}"><div class="li-row"><button type="button" class="li-main"><span class="nm"><span class="t">${nameHTML(p, plain)}</span></span><span class="last"></span></button></div></div>`);
       const tags = storeTags(p);
+      if (firstStore(ti)) tags.firstChild?.remove();     // the group heading already names it
       if (ti.est) tags.appendChild(el(`<span class="tag budget">${esc(peso0(ti.est))} worth</span>`));
       r.querySelector(".nm").appendChild(tags);
-      r.querySelector(".last").textContent = ti.bought ? peso(lineTotal(ti)) : (lb ? "last " + peso0(lb.price) + unitLbl(p) : "");
-      if (isKg(p)) { if (!ti.bought) r.querySelector(".li-row").appendChild(el(`<span class="kgnote">by kg</span>`)); }
+      r.querySelector(".last").textContent = plain ? "" : ti.bought ? peso(lineTotal(ti)) : (lb ? "last " + peso0(lb.price) + unitLbl(p) : "");
+      if (plain) {}
+      else if (isKg(p)) { if (!ti.bought) r.querySelector(".li-row").appendChild(el(`<span class="kgnote">by kg</span>`)); }
       else r.querySelector(".li-row").appendChild(stepper(qtyOf(ti), v => { const cur = tItem(p.id); if (cur) { cur.qty = v; touch(); render(); } }, p.name));
       const openIt = () => { const cur = tItem(p.id); if (!cur) return; openEditor(p.id, {kind:"list", f:fieldsOf(prod(p.id)), est: cur.est ? String(cur.est) : ""}); render(); };
       r.querySelector(".li-main").onclick = () => { if (ui.editing === p.id) { closeEditor(); render(); } else openIt(); };
@@ -864,7 +867,7 @@ function renderList(main){
         left: {label:"Remove", run: () => removeFromTrip(p.id)},
         hold: () => sheet(nameHTML(p), [
           {label:"Edit item or amount", run: openIt},
-          !isKg(p) && {label:"Add one more", run: () => { const cur = tItem(p.id); if (cur) { cur.qty = Math.min(99, qtyOf(cur)+1); touch(); render(); } }},
+          !isKg(p) && !plain && {label:"Add one more", run: () => { const cur = tItem(p.id); if (cur) { cur.qty = Math.min(99, qtyOf(cur)+1); touch(); render(); } }},
           purchases(p.id).length && {label:"See price chart", run: () => openChart(p.id)},
           {label:"Remove from this trip", danger:true, run: () => removeFromTrip(p.id)}])});
       if (ui.editing === p.id && ui.draft?.kind === "list") r.appendChild(listEditor(p, ti));
@@ -933,15 +936,15 @@ function shopItem(ti, sid, kind){
   const open = ui.editing === pid && ui.draft?.kind === "shop";
   const ts = tickStore(ti, sid), quick = !!ts && isLump(ts);      // pay-as-one-total store: tap just ticks
   const inTotal = inCart && ti.bought.price == null;
-  const showStep = !open && !inCart && !isKg(p);
-  const hint = ti.est ? `${esc(peso0(ti.est))} worth` : quick ? "tick when you have it" : (lb ? `last ${esc(peso0(lb.price))}${u}` : "add price");
+  const showStep = !open && !inCart && !isKg(p) && !quick;
+  const hint = ti.est ? `${esc(peso0(ti.est))} worth` : quick ? "" : (lb ? `last ${esc(peso0(lb.price))}${u}` : "add price");
   const right = inTotal ? `<span class="each" style="font-size:.78rem">in ${esc(storeName(ti.bought.store))} total</span>`
     : inCart ? `${esc(peso(lineTotal(ti)))}<span class="each">${isKg(p) ? `${fmtKg(qtyOf(ti))} kg × ${esc(peso(ti.bought.price))}/kg` : (qtyOf(ti)>1 ? `${qtyOf(ti)} × ${esc(peso(ti.bought.price))}` : "")}</span>`
     : (showStep ? "" : hint);
   const card = el(`<div class="item${inCart?" in":""}${kind==="other"?" other":""}"><div class="item-row">
     <button class="item-main" type="button">
       <span class="box">${inCart?"✓":""}</span>
-      <span class="nm"><span class="t">${nameHTML(p)}</span><span class="tags"></span></span>
+      <span class="nm"><span class="t">${nameHTML(p, quick)}</span><span class="tags"></span></span>
       <span class="${inCart && !inTotal?"paid":"last"}">${right}</span>
     </button></div></div>`);
   const tags = card.querySelector(".tags");
@@ -956,7 +959,7 @@ function shopItem(ti, sid, kind){
     options(ti).forEach(s => { const t = el(`<span class="tag"></span>`); t.textContent = storeName(s); tags.appendChild(t); }); }
   if (showStep) card.querySelector(".item-row").appendChild(stepper(qtyOf(ti), v => { const cur = tItem(pid); if (cur) { cur.qty = v; touch(); render(); } }, p.name));
   else if (!open && !inCart && isKg(p) && !ti.est && !quick) card.querySelector(".last").textContent = lb ? `last ${peso0(lb.price)}/kg` : "by kg";
-  if (inCart && !isKg(p) && qtyOf(ti) > 1) card.querySelector(".t").insertAdjacentHTML("afterbegin", `<span class="qx">×${qtyOf(ti)}</span>`);
+  if (inCart && !isKg(p) && !quick && qtyOf(ti) > 1) card.querySelector(".t").insertAdjacentHTML("afterbegin", `<span class="qx">×${qtyOf(ti)}</span>`);
   card.querySelector(".item-main").onclick = () => {
     const cur = tItem(pid); if (!cur) return;
     if (quick && !open && (!inCart || inTotal)) {           // tick / untick, no price
