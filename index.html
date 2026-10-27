@@ -638,6 +638,7 @@ function closeEditor(){ ui.editing = null; ui.draft = null; }
 
 
 /* ===== gestures: swipe a row left/right, press and hold for a menu ===== */
+let fingerDown = 0;   // when a row was touched and not yet let go
 function swipeable(row, fg, opts){
   // opts: {right:{label, run}, left:{label, run}, hold:fn}
   row.classList.add("sw"); fg.classList.add("sw-fg");
@@ -648,7 +649,7 @@ function swipeable(row, fg, opts){
   const reset = () => { fg.classList.add("back"); fg.style.transform = ""; bg.style.opacity = 0; setTimeout(()=>fg.classList.remove("back"), 200); };
   row.addEventListener("pointerdown", e => {
     if (e.button > 0 || e.target.closest(".stepper, input, .editor, .edit")) return;
-    active = true; swiping = false; held = false; x0 = e.clientX; y0 = e.clientY; dx = 0; pid = e.pointerId;
+    fingerDown = Date.now(); active = true; swiping = false; held = false; x0 = e.clientX; y0 = e.clientY; dx = 0; pid = e.pointerId;
     clearTimeout(timer);
     if (opts.hold) timer = setTimeout(() => { if (active && !swiping) { held = true; try { navigator.vibrate && navigator.vibrate(30); } catch(_){} opts.hold(); } }, 480);
   });
@@ -663,11 +664,11 @@ function swipeable(row, fg, opts){
     bg.style.opacity = 1; bg.className = "sw-bg " + (dx > 0 ? "right" : "left") + (Math.abs(dx) > 80 ? (dx > 0 ? " go-r" : " go-l") : "");
   });
   const end = () => {
-    clearTimeout(timer); if (!active) return; active = false;
+    clearTimeout(timer); fingerDown = 0; if (!active) return; active = false;
     if (swiping) { const go = Math.abs(dx) > 80 ? (dx > 0 ? opts.right : opts.left) : null; reset(); row._eatClick = true; setTimeout(()=>row._eatClick=false, 350); if (go) setTimeout(go.run, 120); }
     else if (held) { row._eatClick = true; setTimeout(()=>row._eatClick=false, 350); }
   };
-  row.addEventListener("pointerup", end); row.addEventListener("pointercancel", () => { clearTimeout(timer); active = false; if (swiping) reset(); });
+  row.addEventListener("pointerup", end); row.addEventListener("pointercancel", () => { clearTimeout(timer); fingerDown = 0; active = false; if (swiping) reset(); });
   row.addEventListener("click", e => { if (row._eatClick) { e.stopPropagation(); e.preventDefault(); row._eatClick = false; } }, true);
   row.addEventListener("contextmenu", e => { if (opts.hold) e.preventDefault(); });
 }
@@ -953,7 +954,8 @@ function markTicked(pid, wasPrev){
   try { navigator.vibrate && navigator.vibrate(35); } catch(e){}
   const c0 = tItem(pid), plainName = c0 && c0.bought && isLump(c0.bought.store);
   toast(`${p ? (plainName ? p.item : p.name) : "Item"} is in the cart`, () => { const c = tItem(pid); if (c) { c.bought = wasPrev ? wasPrev.bought : null; c.tags = wasPrev ? wasPrev.tags : []; ui.leaving = null; touch(); render(); } });
-  setTimeout(() => { if (ui.leaving && ui.leaving.pid === pid) { ui.leaving = null; if (ui.tab === "shop") render(); } }, TICK_MS);
+  const land = () => { if (!(ui.leaving && ui.leaving.pid === pid)) return; if (fingerOn()) return setTimeout(land, 150); ui.leaving = null; if (ui.tab === "shop") render(); };
+  setTimeout(land, TICK_MS);
 }
 function tripTotal(exceptPid){ return tItems().filter(t=>t.pid!==exceptPid).reduce((a,t)=>a+lineTotal(t),0) + lumpTotal(); }
 // where an item gets ticked off when tapped in this view
@@ -1000,7 +1002,7 @@ function shopItem(ti, sid, kind){
   if (open) card.appendChild(shopEditor(ti, p, sid, kind));
   else if (leaving) { card.style.setProperty("--fx-left", Math.max(0, TICK_MS - 350 - (Date.now() - ui.leaving.at)) + "ms"); }
   else {
-    const tap = () => card.querySelector(".item-main").click();
+    const tap = () => card.querySelector(".item-main").onclick();
     const notHere = kind === "here" && sid !== "all" && !inCart;
     swipeable(card, card.querySelector(".item-row"), {
       right: !inCart ? {label: quick ? "Got it" : "In cart", run: tap} : null,
@@ -1672,7 +1674,8 @@ addEventListener("input", () => { lastTyped = Date.now(); }, true);
 addEventListener("click", () => { lastTyped = 0; refreshNow(); }, true);     // a tap means typing is done; act on the latest shared list
 addEventListener("keydown", e => { if (e.key === "Enter") { lastTyped = 0; refreshNow(); } }, true);
 addEventListener("change", () => refreshNow(), true);
-const busy = () => { const a = document.activeElement; return !!(scan || (a && a.tagName === "INPUT" && a.type !== "date" && $("main").contains(a) && Date.now() - lastTyped < 4000)); };
+const fingerOn = () => fingerDown && Date.now() - fingerDown < 4000;
+const busy = () => { const a = document.activeElement; return !!(scan || fingerOn() || (a && a.tagName === "INPUT" && a.type !== "date" && $("main").contains(a) && Date.now() - lastTyped < 4000)); };
 function refreshNow(){ if (SYNC && sync.ready && sync.pending) { sync.pending = false; state = stateFromRemote(sync.r); sync.synced = remoteDocs(sync.r); } }
 function applyRemote(){
   if (busy()) { sync.pending = true; clearTimeout(holdTimer); holdTimer = setTimeout(() => { if (sync.pending) applyRemote(); }, 4100); return; }
