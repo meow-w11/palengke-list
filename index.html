@@ -39,7 +39,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--display);margin:0}
 header{padding-block:14px 8px}
 .top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
 h1{font-size:1.35rem;margin:0;letter-spacing:-.01em}
-.tabs{display:grid;grid-template-columns:repeat(3,1fr);background:var(--soft);border-radius:12px;padding:4px;gap:4px}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);background:var(--soft);border-radius:12px;padding:4px;gap:4px}
 .tabs button{padding:9px 0;border-radius:9px;background:none;color:var(--muted);font-weight:700}
 .tabs button[aria-selected="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgb(0 0 0 / .08)}
 main{flex:1;overflow-y:auto;min-height:0;padding-block:8px 16px}
@@ -361,6 +361,13 @@ footer .right{font-family:var(--display);font-size:.9rem;color:var(--fg);font-we
 .cartfold .n.bump{display:inline-block;animation:cartbump .45s}
 @keyframes cartbump{40%{transform:scale(1.35);color:var(--link)}}
 @media (prefers-reduced-motion:reduce){.item.tickfx,.item.tickfx.fresh .box,.cartfold .n.bump{animation-duration:.01s}}
+/* v23: Menu notepad */
+.tabs button:disabled{opacity:.4;cursor:default}
+.notes{display:flex;flex-direction:column;gap:8px;height:100%;min-height:0}
+.notes-h{font-size:1.15rem;font-weight:700;margin-top:6px}
+.notes textarea{flex:1;width:100%;min-height:max(320px, calc(100dvh - 250px));box-sizing:border-box;resize:none;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--fg);font:500 1.05rem/1.55 var(--display)}
+.notes textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
+.notes-foot{font-size:.85rem;color:var(--muted);min-height:1.2em}
 </style>
 <script>try{var t=localStorage.getItem("palengke-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
@@ -371,6 +378,7 @@ footer .right{font-family:var(--display);font-size:.9rem;color:var(--fg);font-we
   <header class="pad" id="hdr">
     <div class="top"><div class="titlewrap"><h1>Palengke List</h1><button type="button" id="themeBtn" class="themebtn" aria-label="Light or dark mode"></button></div><label class="tripdate" id="tripWrap" hidden><span id="tripDate"></span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><input type="date" id="tripdate" aria-label="Trip date"></label></div>
     <div class="tabs" role="tablist" id="tabs">
+      <button data-tab="menu" role="tab" type="button">Menu</button>
       <button data-tab="list" role="tab" type="button">List</button>
       <button data-tab="shop" role="tab" type="button">Shop</button>
       <button data-tab="prices" role="tab" type="button">Prices</button>
@@ -432,6 +440,7 @@ function fixState(st){
   st.history = (st.history || []).map(h => ({...h, lumps:h.lumps||{}, items:(h.items||[]).map(i => ({...i, price:i.price ?? null, qty:i.qty>0?i.qty:1, tags:i.tags||[]}))}));
   st.stores = st.stores.map(s => ({id:s.id, name:s.name, lump:!!s.lump}));
   if (st.trip) st.trip.lump = st.trip.lump || {};
+  st.notes = st.notes && typeof st.notes.text === "string" ? {text:st.notes.text, at:st.notes.at||0} : {text:"", at:0};
   if (st.trip) st.trip.items = (st.trip.items || []).map((t,i) => ({...t, skip:t.skip||[], qty:t.qty>0?t.qty:1, tags:t.tags||[], est:t.est ?? null, added:t.added||i+1, bought:t.bought ? {...t.bought, at:t.bought.at||0} : null}));
   return st;
 }
@@ -1665,6 +1674,7 @@ function stateFromRemote(r){
     products: Object.entries(r.products).map(([id,d]) => ({id, ...NORM.product(d)})).sort((a,b)=>a.name.localeCompare(b.name)),
     history: Object.entries(r.history).map(([id,d]) => ({id, ...NORM.history(d)})).sort((a,b)=>a.date.localeCompare(b.date) || a.id.localeCompare(b.id)),
     trip: null};
+  st.notes = notesFrom(r.notes, state && state.notes);
   if (r.meta && r.meta.trip) st.trip = {date:r.meta.trip.date, lump:{...(r.meta.trip.lump||{})}, budget:r.meta.trip.budget ?? null, items:Object.entries(r.tripItems).map(([pid,d]) => ({pid, ...NORM.trip(d)})).filter(t => st.products.some(p=>p.id===t.pid)).sort((a,b)=>a.added-b.added)};
   return st;
 }
@@ -1675,7 +1685,7 @@ addEventListener("click", () => { lastTyped = 0; refreshNow(); }, true);     // 
 addEventListener("keydown", e => { if (e.key === "Enter") { lastTyped = 0; refreshNow(); } }, true);
 addEventListener("change", () => refreshNow(), true);
 const fingerOn = () => fingerDown && Date.now() - fingerDown < 4000;
-const busy = () => { const a = document.activeElement; return !!(scan || fingerOn() || (a && a.tagName === "INPUT" && a.type !== "date" && $("main").contains(a) && Date.now() - lastTyped < 4000)); };
+const busy = () => { const a = document.activeElement; return !!(scan || fingerOn() || (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA") && a.type !== "date" && $("main").contains(a) && Date.now() - lastTyped < 4000)); };
 function refreshNow(){ if (SYNC && sync.ready && sync.pending) { sync.pending = false; state = stateFromRemote(sync.r); sync.synced = remoteDocs(sync.r); } }
 function applyRemote(){
   if (busy()) { sync.pending = true; clearTimeout(holdTimer); holdTimer = setTimeout(() => { if (sync.pending) applyRemote(); }, 4100); return; }
@@ -1713,7 +1723,7 @@ function firstLoad(fromCache){
   try { localStorage.setItem(KEY+"-merged","1"); } catch(e){}
   sync.ready = true; sync.status = "ready";
   validStore();
-  push(); render();
+  push(); applyNotes(); render();
 }
 function listen(){
   stopListening();
@@ -1724,10 +1734,34 @@ function listen(){
   const after = (key, fromCache) => { got[key] = true; cache[key] = fromCache;
     if (Object.keys(got).length < 4) return;
     if (!sync.ready) firstLoad(Object.values(cache).some(Boolean)); else applyRemote(); };
+  sync.unsubs.push(base.collection("meta").doc("notes").onSnapshot({includeMetadataChanges:false}, s => { sync.r.notes = s.exists ? s.data() : null; if (sync.ready) applyNotes(); },
+    e => { sync.notesErr = e.code === "permission-denied" ? "denied" : "offline"; notesStatus(); }));
   sync.unsubs.push(base.collection("meta").doc("info").onSnapshot({includeMetadataChanges:true}, s => { sync.r.meta = s.exists ? s.data() : null; after("meta", s.metadata.fromCache); }, onErr));
   ["products","history","tripItems"].forEach(c => sync.unsubs.push(base.collection(c).onSnapshot({includeMetadataChanges:true}, qs => {
     qs.docChanges().forEach(ch => { if (ch.type === "removed") delete sync.r[c][ch.doc.id]; else sync.r[c][ch.doc.id] = ch.doc.data(); });
     after(c, qs.metadata.fromCache); }, onErr)));
+}
+// newer of the shared notes and this phone's copy
+function notesFrom(remote, local){
+  const r = remote && typeof remote.text === "string" ? {text:remote.text, at:remote.at||0} : null;
+  const l = local && typeof local.text === "string" ? {text:local.text, at:local.at||0} : {text:"", at:0};
+  return r && r.at >= l.at ? r : l;
+}
+function applyNotes(){
+  const r = sync.r && sync.r.notes, l = state.notes || {text:"", at:0};
+  if (r && (r.at||0) > l.at) {
+    if (ui.notesDirty) return;                              // you're typing: your save wins
+    state.notes = {text:r.text||"", at:r.at||0};
+    try { localStorage.setItem(KEY, J(state)); } catch(e){}
+    const ta = $("notesBox");
+    if (ta) { const a = ta.selectionStart, b = ta.selectionEnd, focused = document.activeElement === ta; ta.value = state.notes.text; if (focused) try { ta.setSelectionRange(Math.min(a, ta.value.length), Math.min(b, ta.value.length)); } catch(e){} notesStatus(); }
+  } else if (l.at > ((r && r.at) || 0) && l.text !== ((r && r.text) || "")) pushNotes();   // written offline: share it now
+}
+function pushNotes(){
+  if (!SYNC || !sync.ready || !sync.db) return;
+  const b = sync.db.batch(); b.set(sync.db.doc("households/main").collection("meta").doc("notes"), {text:state.notes.text, at:state.notes.at});
+  b.commit().then(() => { sync.notesErr = ""; notesStatus(); })
+    .catch(e => { sync.notesErr = e.code === "permission-denied" ? "denied" : "offline"; notesStatus(); });
 }
 function stopListening(){ sync.unsubs.forEach(u => { try { u(); } catch(e){} }); sync.unsubs = []; sync.ready = false; }
 function authError(e){
@@ -1900,9 +1934,36 @@ function renderStores(main){
   main.appendChild(box);
 }
 
+/* ===== MENU: one shared notepad ===== */
+let notesTimer = null;
+function notesStatus(){
+  const el2 = $("notesStatus"); if (!el2) return;
+  const n = state.notes || {text:"", at:0};
+  let t = ui.notesDirty ? "Saving…" : (n.at ? "Saved " + new Date(n.at).toLocaleString("en-PH", {month:"short", day:"numeric", hour:"numeric", minute:"2-digit"}) : "");
+  if (!ui.notesDirty && SYNC && sync.notesErr === "denied") t = "Saved on this phone only. Sharing notes is blocked by the Firebase rules.";
+  else if (!ui.notesDirty && SYNC && (sync.notesErr === "offline" || !sync.online) && n.at) t += ". Shares when you're back online.";
+  el2.textContent = t;
+}
+function saveNotes(){
+  clearTimeout(notesTimer);
+  if (!ui.notesDirty) return;
+  state.notes = {text:ui.notesDraft ?? "", at:Date.now()}; ui.notesDirty = false; ui.notesDraft = null;
+  save(); pushNotes(); notesStatus();
+}
+function renderMenu(main){
+  const w = el(`<div class="notes"><label class="notes-h" for="notesBox">Menu</label><textarea id="notesBox" spellcheck="true" placeholder="Plan the week's meals or jot anything down.&#10;&#10;Mon: Sinigang&#10;Tue: Chop suey"></textarea><div class="notes-foot" id="notesStatus" aria-live="polite"></div></div>`);
+  const ta = w.querySelector("textarea"); ta.value = ui.notesDirty && ui.notesDraft != null ? ui.notesDraft : ((state.notes && state.notes.text) || "");
+  ta.oninput = () => { ui.notesDirty = true; ui.notesDraft = ta.value; notesStatus(); clearTimeout(notesTimer); notesTimer = setTimeout(saveNotes, 700); };
+  ta.onblur = () => saveNotes();
+  main.appendChild(w);
+  notesStatus();
+}
+addEventListener("pagehide", () => saveNotes());
+document.addEventListener("visibilitychange", () => { if (document.hidden) saveNotes(); });
+
 /* ===== shell ===== */
 /* tab colors: the page and the phone's status bar follow the open tab */
-const TAB_BAR = {list:["#8ad11f","#0b1b20"], shop:["#ffcf1f","#1b190b"], prices:["#0f97a8","#08191d"]};
+const TAB_BAR = {menu:["#8ad11f","#0b1b20"], list:["#8ad11f","#0b1b20"], shop:["#ffcf1f","#1b190b"], prices:["#0f97a8","#08191d"]};
 function setTabColor(t){
   if (document.body.dataset.tab === t) return;
   document.body.dataset.tab = t;
@@ -1920,12 +1981,14 @@ function render(){
   if (!inTrip && (ui.tab === "list" || ui.tab === "shop" || ui.tab === "summary")) ui.tab = "list";
   setTabColor(["shop","prices"].includes(ui.tab) && state.trip ? ui.tab : (ui.tab === "prices" ? "prices" : "list"));
   const showHome = !inTrip && ui.tab === "list";
-  $("tabs").hidden = !inTrip;
-  $("foot").hidden = !inTrip || ui.tab === "summary";
+  $("tabs").hidden = false;
+  $("foot").hidden = !inTrip || ui.tab === "summary" || ui.tab === "menu";
+  const sb = document.querySelector('#tabs [data-tab="shop"]'); if (sb) { sb.disabled = !inTrip; sb.title = inTrip ? "" : "Start a trip first"; }
   $("tripWrap").hidden = !inTrip;
   if (inTrip) { $("tripDate").textContent = "Trip · " + fmtDate(state.trip.date, true); if (document.activeElement !== $("tripdate")) $("tripdate").value = state.trip.date; }
-  document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab===ui.tab));
-  if (showHome) renderHome(main);
+  document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab===ui.tab || (b.dataset.tab==="shop" && ui.tab==="summary")));
+  if (ui.tab==="menu") renderMenu(main);
+  else if (showHome) renderHome(main);
   else if (ui.tab==="prices") renderPrices(main);
   else if (ui.tab==="items") renderItems(main);
   else if (ui.tab==="stores") renderStores(main);
@@ -1952,7 +2015,7 @@ function render(){
     document.documentElement.style.setProperty("--foot-h", ($("foot").offsetHeight || 96) + "px");
   }
 }
-function setTab(t){ ui.tab=t; closeEditor(); ui.confirming=null; if (t!=="prices") ui.product=null; ui.backTab = t; save(); render(); $("main").scrollTop=0; }
+function setTab(t){ if (ui.tab === "menu" && t !== "menu") saveNotes(); ui.tab=t; closeEditor(); ui.confirming=null; if (t!=="prices") ui.product=null; ui.backTab = t; save(); render(); $("main").scrollTop=0; }
 document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
 // tap the date at the top to change it; the date box sits invisibly over the label so the phone's own date picker opens
 $("tripdate").onchange = () => { const v = $("tripdate").value; if (v && state.trip) { state.trip.date = v; touch(); render(); } else if (state.trip) $("tripdate").value = state.trip.date; };
