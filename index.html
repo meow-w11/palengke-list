@@ -368,6 +368,10 @@ footer .right{font-family:var(--display);font-size:.9rem;color:var(--fg);font-we
 .notes textarea{flex:1;width:100%;min-height:max(320px, calc(100dvh - 250px));box-sizing:border-box;resize:none;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--fg);font:500 1.05rem/1.55 var(--display)}
 .notes textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
 .notes-foot{font-size:.85rem;color:var(--muted);min-height:1.2em}
+/* v24: hold and drag to reorder in Shop */
+.item.lifted{box-shadow:0 10px 24px rgb(0 0 0 / .22);z-index:5;transform:scale(1.02);transition:transform .12s, box-shadow .12s}
+.item.dragging{transition:none;cursor:grabbing;background:var(--surface)}
+.item.lifted .sw-bg{display:none}
 </style>
 <script>try{var t=localStorage.getItem("palengke-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
@@ -655,16 +659,48 @@ function swipeable(row, fg, opts){
   bg.querySelector(".l").textContent = opts.right ? opts.right.label : ""; bg.querySelector(".r").textContent = opts.left ? opts.left.label : "";
   row.insertBefore(bg, fg);
   let x0=0, y0=0, dx=0, active=false, swiping=false, held=false, timer=null, pid=null;
+  let lifted = false, dragging = false, moved = false, grabDy = 0, lastY = 0, raf = null;
+  const canDrag = () => !!(opts.drag && row.classList.contains("dragok"));
+  const okSib = x => x && x !== row && x.dataset.grp === row.dataset.grp && x.classList.contains("dragok");
+  const place = () => {                                   // follow the finger; swap past a neighbour's middle
+    row.style.transform = ""; const r = row.getBoundingClientRect();
+    const top = lastY - grabDy, mid = top + r.height / 2;
+    const p = row.previousElementSibling, n = row.nextElementSibling;
+    if (okSib(p)) { const pr = p.getBoundingClientRect(); if (mid < pr.top + pr.height / 2) { row.parentNode.insertBefore(row, p); moved = true; return place(); } }
+    if (okSib(n)) { const nr = n.getBoundingClientRect(); if (mid > nr.top + nr.height / 2) { row.parentNode.insertBefore(n, row); moved = true; return place(); } }
+    row.style.transform = `translateY(${top - r.top}px)`;
+  };
+  const edgeScroll = () => {                              // near the top or bottom edge: keep scrolling
+    if (!dragging) return;
+    const m = $("main"), mr = m.getBoundingClientRect(); let v = 0;
+    if (lastY < mr.top + 70) v = -9; else if (lastY > mr.bottom - 90) v = 9;
+    if (v) { const before = m.scrollTop; m.scrollTop += v; if (m.scrollTop !== before) place(); }
+    fingerDown = Date.now(); raf = requestAnimationFrame(edgeScroll);
+  };
+  const stopDrag = () => {
+    cancelAnimationFrame(raf); dragging = false; lifted = false;
+    row.style.transform = ""; row.classList.remove("lifted", "dragging");
+    row._eatClick = true; setTimeout(()=>row._eatClick=false, 350);
+    if (moved) opts.drag.drop(row);
+  };
   const reset = () => { fg.classList.add("back"); fg.style.transform = ""; bg.style.opacity = 0; setTimeout(()=>fg.classList.remove("back"), 200); };
   row.addEventListener("pointerdown", e => {
     if (e.button > 0 || e.target.closest(".stepper, input, .editor, .edit")) return;
-    fingerDown = Date.now(); active = true; swiping = false; held = false; x0 = e.clientX; y0 = e.clientY; dx = 0; pid = e.pointerId;
+    fingerDown = Date.now(); active = true; swiping = false; held = false; lifted = false; dragging = false; moved = false; x0 = e.clientX; y0 = e.clientY; dx = 0; pid = e.pointerId;
     clearTimeout(timer);
-    if (opts.hold) timer = setTimeout(() => { if (active && !swiping) { held = true; try { navigator.vibrate && navigator.vibrate(30); } catch(_){} opts.hold(); } }, 480);
+    if (opts.hold) timer = setTimeout(() => { if (active && !swiping) { held = true; try { navigator.vibrate && navigator.vibrate(30); } catch(_){}
+      if (canDrag()) { lifted = true; row.classList.add("lifted"); } else opts.hold(); } }, 480);
   });
   row.addEventListener("pointermove", e => {
     if (!active || e.pointerId !== pid) return;
     const mx = e.clientX - x0, my = e.clientY - y0;
+    if (lifted && !dragging && Math.abs(my) > 6) {
+      dragging = true; try { row.setPointerCapture(pid); } catch(_){}
+      row.style.transform = ""; grabDy = y0 - row.getBoundingClientRect().top; row.classList.add("dragging");
+      raf = requestAnimationFrame(edgeScroll);
+    }
+    if (dragging) { lastY = e.clientY; fingerDown = Date.now(); place(); return; }
+    if (held) return;
     if (!swiping && (Math.abs(mx) > 8 || Math.abs(my) > 8)) clearTimeout(timer);
     if (!swiping && Math.abs(mx) > 14 && Math.abs(mx) > Math.abs(my) * 1.4 && ((mx > 0 && opts.right) || (mx < 0 && opts.left))) { swiping = true; try { row.setPointerCapture(pid); } catch(_){} }
     if (!swiping) return;
@@ -674,10 +710,13 @@ function swipeable(row, fg, opts){
   });
   const end = () => {
     clearTimeout(timer); fingerDown = 0; if (!active) return; active = false;
+    if (dragging) { stopDrag(); return; }
+    if (lifted) { lifted = false; row.classList.remove("lifted"); row._eatClick = true; setTimeout(()=>row._eatClick=false, 350); opts.hold(); return; }
     if (swiping) { const go = Math.abs(dx) > 80 ? (dx > 0 ? opts.right : opts.left) : null; reset(); row._eatClick = true; setTimeout(()=>row._eatClick=false, 350); if (go) setTimeout(go.run, 120); }
     else if (held) { row._eatClick = true; setTimeout(()=>row._eatClick=false, 350); }
   };
-  row.addEventListener("pointerup", end); row.addEventListener("pointercancel", () => { clearTimeout(timer); fingerDown = 0; active = false; if (swiping) reset(); });
+  row.addEventListener("pointerup", end); row.addEventListener("pointercancel", () => { clearTimeout(timer); fingerDown = 0; active = false; if (dragging) stopDrag(); else if (lifted) { lifted = false; row.classList.remove("lifted"); } if (swiping) reset(); });
+  row.addEventListener("touchmove", e => { if (lifted && e.cancelable) e.preventDefault(); }, {passive:false});   // a lifted row moves, the page doesn't scroll
   row.addEventListener("click", e => { if (row._eatClick) { e.stopPropagation(); e.preventDefault(); row._eatClick = false; } }, true);
   row.addEventListener("contextmenu", e => { if (opts.hold) e.preventDefault(); });
 }
@@ -691,6 +730,8 @@ function sheet(title, actions){
     if (a.checked != null) { b.setAttribute("role", "menuitemradio"); b.setAttribute("aria-checked", a.checked); }
     b.onclick = () => { close(); a.run(); }; sh.appendChild(b);
   });
+  const opened = Date.now();
+  bgEl.addEventListener("click", e => { if (Date.now() - opened < 450) { e.stopPropagation(); e.preventDefault(); } }, true);
   bgEl.onclick = e => { if (e.target === bgEl) close(); };
   document.body.appendChild(bgEl);
   sh.querySelector("button")?.focus();
@@ -1013,6 +1054,7 @@ function shopItem(ti, sid, kind){
   else {
     const tap = () => card.querySelector(".item-main").onclick();
     const notHere = kind === "here" && sid !== "all" && !inCart;
+    if (kind === "here" && !inCart) { card.classList.add("dragok"); card.dataset.pid = pid; }
     swipeable(card, card.querySelector(".item-row"), {
       right: !inCart ? {label: quick ? "Got it" : "In cart", run: tap} : null,
       left: inCart ? {label:"Take out", run: () => { const cur = tItem(pid); if (cur) { cur.bought = null; cur.tags = []; touch(); render(); toast(`${p.name} is back on the list`); } }}
@@ -1023,9 +1065,22 @@ function shopItem(ti, sid, kind){
         inCart && {label:"Take out of cart", run: () => { const cur = tItem(pid); if (cur) { cur.bought = null; cur.tags = []; touch(); render(); } }},
         notHere && {label:"Not available here", run: () => { const cur = tItem(pid); if (cur && !cur.skip.includes(sid)) { cur.skip.push(sid); touch(); render(); } }},
         purchases(pid).length && {label:"See price chart", run: () => openChart(pid)},
-        {label:"Remove from this trip", danger:true, run: () => removeFromTrip(pid)}])});
+        {label:"Remove from this trip", danger:true, run: () => removeFromTrip(pid)}]),
+      drag: kind === "here" && !inCart ? {drop: dropOrder} : null});
   }
   return card;
+}
+// after a drag: the cards' new order becomes the trip order (shared with the other phone)
+function dropOrder(card){
+  if (!state.trip) return;
+  const all = state.trip.items;
+  if (new Set(all.map(t => t.added || 0)).size < all.length) all.slice().sort((a,b)=>(a.added||0)-(b.added||0)).forEach((t,i) => t.added = i + 1);
+  const items = [...card.parentNode.children].filter(c => c.dataset.grp === card.dataset.grp && c.classList.contains("dragok") && c.dataset.pid).map(c => tItem(c.dataset.pid)).filter(Boolean);
+  const slots = items.map(t => t.added).sort((a,b)=>a-b);
+  items.forEach((t,i) => t.added = slots[i]);
+  const was = ui.sort && ui.sort !== "added"; if (was) ui.sort = "added";
+  touch(); render();
+  if (was) toast("Showing your own order now");
 }
 function shopEditor(ti, p, sid, kind){
   const d = ui.draft, pid = p.id, inCart = !!ti.bought;
@@ -1213,7 +1268,7 @@ function paintShopBody(body, sid){
       const g = shown.filter(i => (options(i)[0] || null) === id); if (!g.length) return;
       const gl = g.filter(i => !i.bought).length;
       const h = el(`<div class="group-h"><b></b><span>${gl || "✓"}</span></div>`); h.querySelector("b").textContent = name; body.appendChild(h);
-      g.forEach(ti => body.appendChild(shopItem(ti, "all", "here")));
+      g.forEach(ti => { const c = shopItem(ti, "all", "here"); c.dataset.grp = id || "none"; body.appendChild(c); });
     });
     const cart = byRecent(tItems().filter(i => i.bought && !leavingNow(i) && keep(i)));
     cartFold(body, "In the cart", cart, "cart-all", "all");
@@ -1224,7 +1279,7 @@ function paintShopBody(body, sid){
     if (!shownHere.length && !v) { const dh = el(`<div class="donehead"><span class="ck" aria-hidden="true">✓</span><h2></h2></div>`); dh.querySelector("h2").textContent = `All done at ${storeName(sid)}`; body.appendChild(dh); }
     else { labelRow.firstChild.textContent = here.length ? `${here.length} left at ${storeName(sid)}` : `All done at ${storeName(sid)}`; labelRow.appendChild(sortToggle()); body.appendChild(labelRow); }
     if (!here.length && v) body.appendChild(el(`<div class="empty" style="padding:12px 8px">No item here matches your search.</div>`));
-    shownHere.forEach(ti => body.appendChild(shopItem(ti, sid, "here")));
+    shownHere.forEach(ti => { const c = shopItem(ti, sid, "here"); c.dataset.grp = sid; body.appendChild(c); });
     const boughtHere = byRecent(tItems().filter(i => i.bought && i.bought.store === sid && !leavingNow(i) && keep(i)));
     if (!v) whereNext(body, sid, here.length);
     cartFold(body, "In the cart here", boughtHere, "cart", sid);
